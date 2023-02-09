@@ -311,12 +311,20 @@ void OnInitMenuPspConfigPatched()
         {
             loadSettings();
             int i;
-            for(i = 0; i < N_ITEMS; i++)
-            {
-                AddSysconfContextItem(GetItemes[i].item, NULL, GetItemes[i].item);
-            }
+			if (psp_model == 0) 
+			{
+				
+				for(i = 0; i < N_ITEMS; i++)
+				{
+					if (( psp_model == 0 && ( i == 0 || i == 4 || i == 8 )) || ( psp_model != 4 && ( i == 4 || i == 8 )) )
+						continue;
+					else 
+						AddSysconfContextItem(GetItemes[i].item, NULL, GetItemes[i].item);
+				}
+			}
+
         }
-    }
+	}
     else if (is_cfw_config == 2){
         if(((u32 *)sysconf_option)[2] == 0)
         {
@@ -346,7 +354,10 @@ SceSysconfItem *GetSysconfItemPatched(void *a0, void *a1)
         {
             if(sce_paf_private_strcmp(item->text, GetItemes[i].item) == 0)
             {
-                context_mode = GetItemes[i].mode;
+				if (psp_model == 0 && i == 0) {
+					GetItemes[i] = GetItemes[i+1];
+				}
+				context_mode = GetItemes[i].mode;
             }
         }
     }
@@ -365,11 +376,11 @@ wchar_t *scePafGetTextPatched(void *a0, char *name)
             int i;
             for(i = 0; i < N_ITEMS; i++)
             {
-                if(sce_paf_private_strcmp(name, GetItemes[i].item) == 0)
-                {
-                    utf8_to_unicode((wchar_t *)user_buffer, string.options[i]);
-                    return (wchar_t *)user_buffer;
-                }
+				if(sce_paf_private_strcmp(name, GetItemes[i].item) == 0)
+				{
+					utf8_to_unicode((wchar_t *)user_buffer, string.options[i]);
+					return (wchar_t *)user_buffer;
+				}
             }
         }
         else if (is_cfw_config == 2){
