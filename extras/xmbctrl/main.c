@@ -311,19 +311,16 @@ void OnInitMenuPspConfigPatched()
         {
             loadSettings();
             int i;
-			if (psp_model == 0) 
+			for(i = 0; i < N_ITEMS; i++)
 			{
+				if (( psp_model == PSP_1000 && ( i == 0 || i == 4 || i == 5 || i == 8 )) || (( psp_model != PSP_GO && ( i == 4 || i == 8 ) )))
+					continue;
+				else  
+					AddSysconfContextItem(GetItemes[i].item, NULL, GetItemes[i].item);
 				
-				for(i = 0; i < N_ITEMS; i++)
-				{
-					if (( psp_model == 0 && ( i == 0 || i == 4 || i == 8 )) || ( psp_model != 4 && ( i == 4 || i == 8 )) )
-						continue;
-					else 
-						AddSysconfContextItem(GetItemes[i].item, NULL, GetItemes[i].item);
-				}
 			}
+		}
 
-        }
 	}
     else if (is_cfw_config == 2){
         if(((u32 *)sysconf_option)[2] == 0)
