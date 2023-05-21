@@ -7,6 +7,7 @@
 
 int sceSysconInit(void)
 {
+
 	sceSysregSpiClkSelect(0,1);
 
 	sceSysregSpiClkEnable(0);
@@ -38,6 +39,9 @@ int sceSysconInit(void)
 	REG32(0xbe240014) &= ~0x10;
 	REG32(0xbe240018) |=  0x10;
 	REG32(0xbe240024) = 0x10;
+
+	//sysreg_io_enable_gpio();
+	REG32(0xbc100058) |= (1<<23);
 
 	return 0;
 }
@@ -201,12 +205,45 @@ int sceSysconCommonRead(u32 *param,u8 cmd)
 		case 4: *param = rx_buf[3]; break;
 		case 5: *param = rx_buf[3]|(rx_buf[4]<<8); break;
 		case 6: *param = rx_buf[3]|(rx_buf[4]<<8)|(rx_buf[5]<<16); break;
-		default:
+		case 7:
 			*param = rx_buf[3]|(rx_buf[4]<<8)|(rx_buf[5]<<16)|(rx_buf[6]<<24);
+			break;
+		default:
+			return -1;
 		}
 	}
 	return result;
 }
+
+/*
+#define TX_CMD 0
+#define TX_LEN 1
+#define RX_LEN 1
+
+int sceSysconCommonRead(u32 *param, u8 cmd) {
+	u8 tx[0x10], rx[0x10];
+
+	u32 buf[4];
+
+	memset(tx, 0, sizeof(tx));
+	memset(rx, 0, sizeof(rx));
+
+	tx[TX_LEN] = 2;
+	tx[TX_CMD] = cmd;
+
+	int res = Syscon_cmd(tx, rx);
+
+	if (param == NULL) return res;
+
+	buf[0] = 0;
+
+	memcpy(buf, &rx[3], rx[RX_LEN] - 3);
+
+	*param = buf[0];
+
+	return 0;
+}
+*/
 
 u32 Syscon_wait(u32 usec)
 {
@@ -227,6 +264,35 @@ u32 Syscon_wait(u32 usec)
   LED power controll
 
 */
+int sceSysconCtrlLED(int led, int enable, u32 baryon_version) {
+	u8 ledMask, setMask;
+	switch (led) {
+		case LED_WLAN:
+			ledMask = 0x80;
+			break;
+		case LED_MS:
+			ledMask = 0x40;
+			break;
+		case LED_POWER:
+			ledMask = 0x20;
+			break;
+		case LED_BT:
+			ledMask = 0x10;
+			return -1; //TODO: Add pommel check
+	}
+
+	setMask = 0;
+	if (enable) {
+		u32 ver = (baryon_version >> 16) & 0xF0;
+		setMask = 0x10;
+		if (ver != 0 && ver != 0x10) {
+			setMask = 1;
+		}
+	}
+
+	return sceSysconCommonWrite(ledMask | setMask, 0x47, 3);
+}
+/*
 int sceSysconCtrlLED(int sel,int is_on)
 {
 	u32 param;
@@ -248,6 +314,7 @@ int sceSysconCtrlLED(int sel,int is_on)
 	}
 	return sceSysconCommonWrite(param,0x47,0x03);
 }
+*/
 
 int pspSysconGetCtrl2(u32 *ctrl,u8 *vol1,u8 *vol2)
 {

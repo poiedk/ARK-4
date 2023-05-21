@@ -11,6 +11,13 @@
 	+08   :Analog  (cmd 08)
 */
 
+enum {
+	  LED_MS,
+	  LED_WLAN,
+	  LED_POWER,
+    LED_BT
+};
+
 #define REG32(ADDR) (*(vu32*)(ADDR))
 
 #define SYSCON_CTRL_ALLOW_UP  0x00000001
@@ -134,7 +141,7 @@ static inline int sceSysconGetPolestarVersion(u32 *ptr){ return sceSysconCommonR
 static inline int sceSysconCtrlVoltage(u8 idx, u8 val){ return sceSysconCommonWrite(val << 8 | idx,0x42,5); }		// 42 : 5 : 3
 static inline int sceSysconCtrlPower(u32 val){ return sceSysconCommonWrite(val,0x45,5); }		// 45 : 5 : 3
 static inline int sceSysconGetPowerStatus(u32 *sts){ return sceSysconCommonRead(sts,0x46); }	// 46 : 2 : ?
-              int sceSysconCtrlLED(int sel,int is_on);
+              int sceSysconCtrlLED(int sel,int is_on, u32 baryon_version);
 static inline int sceSysconWritePommelReg(u32 val){ return sceSysconCommonWrite(val,0x48,5); }// 48 :  5 :  3
 static inline int sceSysconReadPommelReg(u32 val){ return sceSysconCommonWrite(val,0x49,3); }// 49 :  3 :  2
 static inline int sceSysconCtrlNandPower(u32 *ptr){ return sceSysconCommonRead(ptr,0x4a); }		// 4a : 2 : 7

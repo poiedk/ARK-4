@@ -281,7 +281,13 @@ u32 GetTachyonVersion()
 
 int main()
 {
+
 	sceSysconInit();
+
+#ifndef MSIPL
+#ifdef SET_SEED_ADDRESS
+	unlockSyscon();
+#endif
 
 	u32 baryon_version = 0;
 	while (sceSysconGetBaryonVersion(&baryon_version) < 0);
@@ -290,10 +296,7 @@ int main()
 
 	u32 tachyon_version = GetTachyonVersion();
 
-#ifndef MSIPL
-#ifdef SET_SEED_ADDRESS
-	unlockSyscon();
-#endif
+	sceSysconCtrlLED(1, 1, baryon_version);
 
 	uint32_t keys = -1;
 	pspSysconGetCtrl1(&keys);
@@ -332,7 +335,6 @@ int main()
 	_putchar('r');
 	_putchar('\n');
 #endif
-
 	
 	if (tachyon_version >= 0x600000)
 		_sw(0x20070910, 0xbfc00ffc);
