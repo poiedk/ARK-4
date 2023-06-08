@@ -13,6 +13,11 @@ typedef struct {
     char* options[];
 } settings_entry;
 
+typedef struct {
+    settings_entry** settings_entries;
+    int max_options;
+} SettingsTable;
+
 class SettingsMenu : public SystemEntry{
 
     private:
@@ -23,30 +28,32 @@ class SettingsMenu : public SystemEntry{
         
         string* customText;
         int ntext;
+        bool shorten_paths;
+        bool show_all_opts;
+        bool show_info;
         
         bool changed;
         
-        settings_entry** settings_entries;
-        int max_options;
+        SettingsTable* table;
         int max_height;
         
         string info;
         string name;
         
-        Image* icon;
+        int icon;
 
         void (*callback)();
         
     public:
     
-        SettingsMenu(settings_entry**, int, void (*callback)());
+        SettingsMenu(SettingsTable* table, void (*callback)(), bool shorten_paths, bool show_all_opts, bool show_info);
         ~SettingsMenu();
     
         void setCustomText(string text[], int n);
         void unsetCustomText();
     
-        void setIcon(Image* icon){
-            if (icon) this->icon = icon;
+        void setIcon(int icon){
+            this->icon = icon;
         }
 
         void draw();
@@ -70,7 +77,7 @@ class SettingsMenu : public SystemEntry{
         }
         
         Image* getIcon(){
-            return this->icon;
+            return common::getImage(icon);
         }
         
         string getName(){
@@ -81,6 +88,8 @@ class SettingsMenu : public SystemEntry{
         
         void applyConf();
         void readConf();
+
+        int getIndex();
         
 };
 

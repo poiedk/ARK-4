@@ -4,19 +4,19 @@
 #define CONTROL_DELAY 10
 
 Controller::Controller(){
-    this->pad = new SceCtrlData;
     this->nowpad = this->newpad = this->oldpad = 0;
     this->n = 0;
 }
 
 Controller::~Controller(){
-    delete this->pad;
 }
         
-void Controller::update(){
-    sceCtrlReadBufferPositive(this->pad, 1);
+void Controller::update(int ignore){
+
+    for (int i=0; i<ignore; i++)
+        sceCtrlReadBufferPositive(&pad, 1);
     
-    nowpad = pad->Buttons;
+    nowpad = pad.Buttons;
     newpad = nowpad & ~oldpad;
     
     if (oldpad == nowpad){
@@ -32,8 +32,8 @@ void Controller::update(){
 }
 
 void Controller::flush(){
-    while (this->pad->Buttons)
-        sceCtrlReadBufferPositive(this->pad, 1);
+    while (pad.Buttons)
+        sceCtrlReadBufferPositive(&pad, 1);
 }
 
 bool Controller::wait(void* busy_wait){
@@ -114,4 +114,8 @@ bool Controller::start(){
 
 bool Controller::select(){
     return (newpad & PSP_CTRL_SELECT);
+}
+
+bool Controller::home(){
+    return (newpad & PSP_CTRL_HOME);
 }

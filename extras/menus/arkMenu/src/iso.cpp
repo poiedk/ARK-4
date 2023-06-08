@@ -178,7 +178,29 @@ void Iso::getTempData2(){
 }
 
 void Iso::doExecute(){
-    Iso::executeISO(this->path.c_str(), this->isPatched());
+    static char pboot_path[256];
+    if (has_update_file(pboot_path)){
+        Iso::executeISOupdated(this->path.c_str(), pboot_path);
+    }
+    else{
+        Iso::executeISO(this->path.c_str(), this->isPatched());
+    }
+}
+
+void Iso::executeISOupdated(const char* path, const char* pboot_path){
+    struct SceKernelLoadExecVSHParam param;
+    memset(&param, 0, sizeof(param));
+
+    sctrlSESetBootConfFileIndex(ISO_DRIVER);
+    sctrlSESetUmdFile((char*)path);
+
+    param.argp = (void*)pboot_path;
+    param.args = strlen(pboot_path) + 1;
+    param.key = "umdemu";
+
+    int runlevel = (*(u32*)pboot_path == EF0_PATH && common::getConf()->redirect_ms0)? ISO_PBOOT_RUNLEVEL_GO : ISO_PBOOT_RUNLEVEL;
+
+    sctrlKernelLoadExecVSHWithApitype(runlevel, pboot_path, &param);
 }
 
 void Iso::executeISO(const char* path, bool is_patched){
@@ -187,14 +209,16 @@ void Iso::executeISO(const char* path, bool is_patched){
     memset(&param, 0, sizeof(param));
 
     if (is_patched)
-        param.argp = (char*)"disc0:/PSP_GAME/SYSDIR/EBOOT.OLD";
+        param.argp = (char*)UMD_EBOOT_OLD;
     else
-        param.argp = (char*)"disc0:/PSP_GAME/SYSDIR/EBOOT.BIN";
+        param.argp = (char*)UMD_EBOOT_BIN;
 
     int runlevel = (*(u32*)path == EF0_PATH && common::getConf()->redirect_ms0)? ISO_RUNLEVEL_GO : ISO_RUNLEVEL;
 
+    param.size = sizeof(param);
     param.key = "umdemu";
     param.args = 33;  // lenght of "disc0:/PSP_GAME/SYSDIR/EBOOT.BIN" + 1
+    sctrlSESetDiscType(PSP_UMD_TYPE_GAME);
     sctrlSESetBootConfFileIndex(ISO_DRIVER);
     sctrlSESetUmdFile((char*)path);
     sctrlKernelLoadExecVSHWithApitype(runlevel, path, &param);
@@ -234,6 +258,41 @@ void Iso::executeVideoISO(const char* path)
 	sctrlKernelExitVSH(NULL);
 }
 
+int Iso::has_update_file(char* update_file){
+    // game ID is always at offset 0x8373 within the ISO
+    int lba = 16;
+    int pos = 883;
+
+    char game_id[10];
+
+    (this->*read_iso_data)((u8*)game_id, 10, 0x8373);
+
+    // remove the dash in the middle: ULUS-01234 -> ULUS01234
+    game_id[4] = game_id[5];
+    game_id[5] = game_id[6];
+    game_id[6] = game_id[7];
+    game_id[7] = game_id[8];
+    game_id[8] = game_id[9];
+    game_id[9] = 0;
+
+    // try to find the update file
+    char path[256];
+    char* devs[] = {"ms0:", "ef0:"};
+
+    for (int i=0; i<2; i++){
+        sprintf(path, "%s/PSP/GAME/%s/PBOOT.PBP", devs[i], game_id);
+        int fd = sceIoOpen(path, PSP_O_RDONLY, 0777);
+        if (fd >= 0){
+            // found
+            sceIoClose(fd);
+            if (update_file) strcpy(update_file, path);
+            return 1;
+        }
+    }
+    // not found
+    return 0;
+}
+
 char* Iso::getType(){
     return "ISO";
 }
@@ -246,14 +305,30 @@ bool Iso::isPatched(){
     return (this->fastExtract("EBOOT.OLD") != NULL);
 }
 
+SfoInfo Iso::getSfoInfo(){
+    SfoInfo info = this->Entry::getSfoInfo();
+    unsigned int size = 0;
+    unsigned char* sfo_buffer = (unsigned char*)fastExtract("PARAM.SFO", &size);
+    if (sfo_buffer){
+        int title_size = sizeof(info.title);
+        Entry::getSfoParam(sfo_buffer, size, "TITLE", (unsigned char*)(info.title), &title_size);
+        
+        int id_size = sizeof(info.gameid);
+        Entry::getSfoParam(sfo_buffer, size, "DISC_ID", (unsigned char*)(info.gameid), &id_size);
+
+        free(sfo_buffer);
+    }
+    return info;
+}
+
 bool Iso::isISO(const char* filename){
-    u32 magic = common::getMagic(filename, 0);
+    string ext = common::getExtension(filename);
     return (
-        magic == CSO_MAGIC ||
-        magic == ZSO_MAGIC ||
-        magic == DAX_MAGIC ||
-        magic == JSO_MAGIC ||
-        common::getMagic(filename, 0x8000) == ISO_MAGIC
+        ext == "iso" ||
+        ext == "cso" ||
+        ext == "zso" ||
+        ext == "jso" ||
+        ext == "dax"
     );
 }
 
@@ -289,12 +364,10 @@ int Iso::read_compressed_data(u8 *addr, u32 size, u32 offset)
 
     // IO speedup tricks
     u32 starting_block = o_offset / block_size;
-    u32 ending_block = o_offset+size;
-    if (ending_block%block_size == 0) ending_block = ending_block/block_size;
-    else ending_block = (ending_block/block_size)+1;
+    u32 ending_block = ((o_offset+size)/block_size);
     
     // refresh index table if needed
-    if (g_cso_idx_start_block < 0 || starting_block < g_cso_idx_start_block || starting_block+1 >= g_cso_idx_start_block + CISO_IDX_MAX_ENTRIES-1){
+    if (g_cso_idx_start_block < 0 || starting_block < g_cso_idx_start_block || starting_block-g_cso_idx_start_block+1 >= CISO_IDX_MAX_ENTRIES-1){
         read_raw_data((u8*)g_cso_idx_cache, CISO_IDX_MAX_ENTRIES*sizeof(u32), starting_block * sizeof(u32) + header_size);
         g_cso_idx_start_block = starting_block;
     }
@@ -302,14 +375,12 @@ int Iso::read_compressed_data(u8 *addr, u32 size, u32 offset)
     // Calculate total size of compressed data
     u32 o_start = (g_cso_idx_cache[starting_block-g_cso_idx_start_block]&0x7FFFFFFF)<<align;
     // last block index might be outside the block offset cache, better read it from disk
-    u32 o_end[2]; read_raw_data((u8*)&o_end[0], sizeof(u32)*2, ending_block*sizeof(u32)+header_size);
-    o_end[0] = (o_end[0]&0x7FFFFFFF)<<align;
-    o_end[1] = (o_end[1]&0x7FFFFFFF)<<align;
-    u32 compressed_size = o_end[1]-o_start;
+    u32 o_end; read_raw_data((u8*)&o_end, sizeof(u32), ending_block*sizeof(u32)+header_size);
+    o_end = (o_end&0x7FFFFFFF)<<align;
+    u32 compressed_size = o_end-o_start;
 
     // try to read at once as much compressed data as possible
-    if (size >= block_size*2){ // only if going to read more than two blocks
-        if (size < compressed_size) compressed_size = o_end[0]-o_start;
+    if (size > block_size*2){ // only if going to read more than two blocks
         if (size < compressed_size) compressed_size = size-block_size; // adjust chunk size if compressed data is bigger than uncompressed
         c_buf = top_addr - compressed_size; // read into the end of the user buffer
         read_raw_data(c_buf, compressed_size, o_start);
@@ -321,7 +392,7 @@ int Iso::read_compressed_data(u8 *addr, u32 size, u32 offset)
         pos = offset & (block_size - 1);
 
         // check if we need to refresh index table
-        if (cur_block >= g_cso_idx_start_block+CISO_IDX_MAX_ENTRIES-1){
+        if (cur_block-g_cso_idx_start_block >= CISO_IDX_MAX_ENTRIES-1){
             read_raw_data((u8*)g_cso_idx_cache, CISO_IDX_MAX_ENTRIES*sizeof(u32), cur_block * 4 + header_size);
             g_cso_idx_start_block = cur_block;
         }
@@ -339,23 +410,25 @@ int Iso::read_compressed_data(u8 *addr, u32 size, u32 offset)
             b_size = DAX_COMP_BUF;
 
         // check if we need to (and can) read another chunk of data
-        if (c_buf <= addr || c_buf+b_size > top_addr){
-            if (size >= block_size*2){ // only if more than two blocks left, otherwise just use normal reading
-                compressed_size = o_end[1]-b_offset; // recalculate remaining compressed data
-                if (size < compressed_size) compressed_size = o_end[0]-o_offset;
+        if (c_buf < addr || c_buf+b_size > top_addr){
+            if (size > b_size+block_size){ // only if more than two blocks left, otherwise just use normal reading
+                compressed_size = o_end-b_offset; // recalculate remaining compressed data
                 if (size < compressed_size) compressed_size = size-block_size; // adjust if bigger than uncompressed
-                c_buf = top_addr - compressed_size; // read into the end of the user buffer
-                read_raw_data(c_buf, compressed_size, b_offset);
+                if (compressed_size >= b_size){
+                    c_buf = top_addr - compressed_size; // read into the end of the user buffer
+                    read_raw_data(c_buf, compressed_size, b_offset);
+                }
             }
         }
 
         // read block, skipping header if needed
-        if (c_buf > addr && c_buf+b_size <= top_addr){
+        if (c_buf >= addr && c_buf+b_size <= top_addr){
             memcpy(com_buf, c_buf+block_header, b_size); // fast read
             c_buf += b_size;
         }
         else{ // slow read
             b_size = read_raw_data(com_buf, b_size, b_offset + block_header);
+            if (c_buf) c_buf += b_size;
         }
 
         // decompress block

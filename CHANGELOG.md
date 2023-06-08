@@ -1,5 +1,266 @@
 # ARK Changelog
 
+## Version 4.20.55 (2023-06-08)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42055
+- Fixed crash when launching games from `XMB` introduced in the `4.20.53` update.
+- Cleaned up of `ChovySign` dummy `ISO` for `Standalone` installations on `PS Vita`.
+
+## Version 4.20.54 Rev 2 (2023-06-07)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42054-r2
+- Added support for using `ChovySign` to create `Standalone` installations on `PS Vita`.
+
+## Version 4.20.54 (2023-06-07)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42054
+- Fixed crash in `PS Vita` with `Standalone` installations.
+- Improved stability of kernel exploit (`K.BIN` file) for `PS Vita Standalone` installations.
+- Fixed updater in `PS Vita Standalone` installations.
+- Added new theme `yokai` made by a user.
+
+## Version 4.20.53 (2023-06-06)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42053
+- Improved `Advanced VSH Menu` options in `Adrenaline` installations.
+- Improved `Advanced VSH Menu` options in `PSP Go` models.
+- Fixed several issues in `(Advanced) VSH Menu` that would prevent configuration from being updated.
+- Fixed and improved random color selection in `(Advanced) VSH Menu`.
+- Added support for `PBOOT.PBP` updates and `Prometheus`-patched games in the `Boot Random ISO` feature of `Advanced VSH Menu`
+- Improved memory management in the `XMB` when reading `ISO/CSO` files.
+- Added new themes `Windows 7`, `Windows XP` and `CyanogenPSP` for `Custom Launcher`/`Recovery`.
+- Severeal more cleanup and improvements.
+
+## Version 4.20.52 (2023-06-05)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42052
+- Added patch to remove annoying "overclocked" message in ATV Offroad Fury Pro.
+- You can now change the size of the main menu in Custom Launcher or Recovery.
+- Added Korean translation to XMB Control.
+- Fixed graphical glitch in Advanced VSH Menu on the Convert Battery option.
+- Some other cleanup in the compatibility layers.
+
+## Version 4.20.51 (2023-05-28)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42051
+- Fixed crash when exiting custom launcher on PS Vita.
+- Added Dutch translations to XMB Control.
+
+## Version 4.20.50 (2023-05-26)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42050
+- Completely refactored all core code related to settings handling. It is now faster and consumes less resources.
+- Added ability to change `VSH` and `UMD` region in `Advanced VSH Menu`, changing `UMD` region is instant while changing `VSH` region requires a reset.
+- Added `PSN` patches and fixes from `PRO` CFW.
+- Other cleanup and improvements.
+
+## Version 4.20.40 (2023-05-24)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42040
+- You can now install all external modules in flash0, allowing for a full permanent installation.
+- Fixed issue when booting some ISOs in the `custom launcher`.
+- Added ability to `restart` and `shutdown` on `custom launcher` (for `PSP` only).
+- Added configuration to change behavior of Start button in `custom launcher`, options are: Disabled, Boot Current Game, Boot Last Game, Boot Random ISO.
+- Holding the `L-trigger` while loading the `custom launcher` will autoboot the last played game.
+- Cleanup of `pentazemin` compatibility layer and other parts of the `Custom Firmware`.
+
+## Version 4.20.35 (2023-05-16)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42035
+- Improved `660on661` patch. Fixes crashes and other issues in homebrew such as `chronoswitch` and others.
+- Fixed crash in `DJ Max`. Still a heavy Anti-Piracy game.
+- `Free space` available (on ms0 or ef0) is now shown in `file browser`.
+- You can now boot into `OFW` using `new cIPL` (holding `Home` button).
+
+## Version 4.20.34 (2023-05-15)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42034
+- Fixed black screen when launching PS1 games and homebrew on PSP Go.
+- Fixed slowdowns in the custom launcher when previewing a game.
+
+## Version 4.20.33 (2023-05-12)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42033
+- Ported over the new cIPL reset hack from DC-M33 project. Allows for permament Custom IPL installations on 3g models (early 3K).
+- Fixed issues with Inferno driver.
+- Added Simplified Chinese translation in the XMB.
+- Other fixes and improvements.
+
+## Version 4.20.20 (2023-05-10)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42020
+- Improved memory management in the XMB, fixes issues such as crashes with too many games loaded.
+- Cleanup and fix Inferno driver.
+- Added option to Hide DLC in the XMB.
+- Added battery percentage to launcher and recovery.
+- Other fixes, cleanup and improvements.
+
+## Version 4.20.19 (2023-05-09)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42019
+- You can now update ARK using the Custom Launcher.
+
+## Version 4.20.18 (2023-05-08)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42018
+- Fixed bug introduced in 4.20.17 that would cause retail games to show "corrupt save data" error.
+
+## Version 4.20.17 (2023-05-08)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42017
+- Added patch that unlocks higher firmware features on older homebrews (more noticeably audiovideo codecs).
+- Fixed and improved music player. You can now select more than one MP3 file to create a playlist.
+- Other general fixes and improvements.
+
+## Version 4.20.16 (2023-05-07)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42016
+- Legacy 1.50 homebrew in `KXploit` format is now properly deleted in `XMB` and `launcher`.
+- Added `rename` option to game menu in custom launcher.
+- Cleaned up `pentazemin` compatibility layer.
+- Allow `Stargate` no-DRM engine to run in `UMD` games. Fixes crashing in some `UMD`s.
+- Other general fixes and improvements.
+
+## Version 4.20.15 (2023-05-06)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42015
+- Added date and time to launcher/recovery.
+- Improved music player in file browser, now you can use triangle button to exit the music player while the music keeps playing.
+- Added options to Game Menu in custom launcher by pressing L trigger.
+- Some visual improvements to the custom launcher.
+
+## Version 4.20.14 (2023-05-05)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42014
+- Fixed LEDA plugin crashing on DC-ARK.
+- Added hotkeys to disable plugins and/or settings. Press and hold start (disable plugins) and/or select (disable settings) when the console starts up, or a game is being boot, or exiting from a game, to temporarily disable plugins/settings.
+
+## Version 4.20.13 (2023-05-04)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42013
+- Fixed exit game freezing on some homebrew in PS Vita (standalone and adrenaline).
+- Fixed regression that would mess up plugin loading on PSP Go.
+- Added patch that fixes 6.60 plugins and homebrew on 6.61 firmware.
+- Added Official Firmware version to launcher and recovery. It is also shown in System Information (XMB) when the option to hide MAC address is enabled.
+- Added option to completely disable LEDs on PSP.
+
+## Version 4.20.12 (2023-05-04)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42012
+- Fixed XMB USB device mount in Adrenaline compatibility mode.
+- Fixed CWCHEAT POPS in Adrenaline compatibility mode.
+- Fixed Autoboot Launcher in Adrenaline compatibility mode.
+
+## Version 4.20.11 (2023-05-03)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42011
+- Fixed Force Extra Memory and Inferno Cache on Adrenaline.
+
+## Version 4.20.10 (2023-05-02)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r42010
+- Fixed sleep/resume crashes in Pentazemin compatibility layer.
+- Fixed Boot Random ISO in PS Vita.
+- Compatibility with Adrenaline is now Stable!
+
+## Version 4.20.09 (2023-05-02)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r4209
+- Fixed and improved System Update patches.
+- Update server URL is now stored in UPDATER.TXT inside the ARK_01234 folder. Removing this file will leave the official System Update.
+- Updater is now ready, you can update to this release from 4.20.08 using System Update feature in the XMB.
+
+## Version 4.20.08 (2023-05-01)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r4208
+- Updating ARK from the XMB is now working. There is no actual update available now, but it will run a test app if you try to update.
+
+## Version 4.20.07 (2023-04-30)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r4207
+- Fixed regression introduced to Inferno ISO driver that would increase memory consumption.
+- Replaced XMB CSO reader code with one based on Inferno's, improves speed and fixes issues.
+- Improved ISO/CSO scanning in custom launcher.
+- Improved waiting icon animations in launcher/recovery.
+- Added preliminary code for Custom Update. Does not get applied yet.
+- Updated themes: black, blue, blue2 and red.
+
+## Version 4.20.06 (2023-04-29)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r4206
+- Cleaned up VSH Menu, fixed scePaf imports (fixes crash on Development Tool units).
+- Fixed and improved Inferno CSO reader, specially noticeable on games like God of War Ghost of Sparta. CSO files can't go any faster though (due to slow decompression algorithm), it is recommended to use JSO or ZSO for near ISO speeds.
+- Improved (fixed?) crashing issue when sleep/resume in Crisis Core.
+- Added animation to waiting icon on custom launcher or recovery.
+- Re-wrote "Boot Random Game" option, it's faster, no longer consumes any extra RAM and works with categorized /ISO/ folder. 
+- Some other fixes and improvements.
+
+## Version 4.20.05 (2023-04-27)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r4205
+- Fixed crash when launching a 1.50 homebrew with KXploit format on PSP.
+- Improved image viewer scrolling.
+- Improved themes preview function. You can now use themes without installing them.
+- Added disc0:/ to File Browser, lets you browse the files on a UMD (not available on Vita or PSP Go).
+- You can now choose where to extract .zip and .rar files (current folder or root folder).
+- Some other fixes and cleanup.
+
+## Version 4.20.04 (2023-04-26)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r4204
+- Fixed crashes in Custom Launcher if you have a 1.50 homebrew in kxploit format (MyHomebrew%/EBOOT.PBP).
+- The XMB will now hide corrupt icons from 1.50 homebrew in kxploit format (MyHomebrew%/EBOOT.PBP).
+- Improved scrolling in custom launcher and recovery.
+- Added missing sounds to BadgerOS and BadgerOS Sprunk themes.
+- You can now view images in PNG, JPEG or BMP format in the File Browser.
+- You can now play music in MP3 format in the File Browser.
+- Added new icons for music and photo files in File Browser.
+
+## Version 4.20.03 (2023-04-25)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r4203
+- Fixed regression with Inferno driver.
+- Added option to Hide MAC Address in XMB.
+- Ported over PRO's Libertas MAC Spoofer. Lets you change the PSP mac address using /seplugins/mac.txt. Always enabled when the file is found with a valid MAC address.
+- Improved scrollbar in launcher/recovery.
+- Several cleanup and fixes.
+
+## Version 4.20.02 (2023-04-24)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r4202
+- You can now preview and install themes directly from the launcher/recovery File Browser. The theme is loaded instantly.
+- FTP Client: allow connecting to FTP servers via their name instead of the IP address.
+- FTP Client: add ability to specify the port of the FTP server (21 by default if non specified) as well as username and password (anonymous connection used if none entered).
+
+## Version 4.20.01 (2023-04-23)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r4201
+- Fixed crash when opening "Custom Firmware Settings" in the XMB on a PSP Go.
+- Fixed issue that would make the internal memory of a PSP Go disappear after exiting a game.
+- Fixed issue with USB Device change in PSP Go.
+- Other fixes related to PSP Go.
+
+## Version 4.20 (2023-04-20)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r420
+- Ported Time Machine and Despertar del Cementerio to ARK, allowing to unbrick PSPs and install and run the 6.61 firmware (plus ARK) on a memory stick.
+- Created the Pentazemin compatibility layer that allows ARK to run inside Adrenaline, creating a Hybrid Custom Firmware that combines the features of both Custom Firmwares.
+  Note: extremely experimental feature that's still in development and there are known bugs.
+- Created a new VSH Menu that combines both the Simple VSH Menu and the Advanced VSH Menu, no longer having to install it from a separate file to access its features.
+- Re-wrote all static patches in the PSP compatibility layer to dynamic ones, fixing any issues with Testkits and Devkits.
+
+## Version 4.19.16 (2023-02-24)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r41916
+- File browser now has icons for compatible file formats (iso, cso, zso, jso, dax, pbp, prx, zip, rar, txt, cfg and ini).
+
+## Version 4.19.15 (2023-02-22)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r41915
+- Fixed all games reporting "not enough space" even when there is.
+- Changed default launcher/recovery theme.
+
+## Version 4.19.14 (2023-02-22)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r41914
+- You can now use slim colors on PSP 1K.
+- Added partial support for files with non-latin1 characters in recovery/launcher.
+- Added new CFW setting "Block hibernation deletion on PSP Go", available in XMB and recovery menu.
+- Fixed issues with "Skip Sony Logos", such as compatibility with Testing Tool and Development Tool firmwares.
+- Renamed launcher/recovery settings file from ARKMENU.CFG to ARKMENU.BIN to prevent confusion since it's not a text file.
+- Added new features to Advanced VSH Menu: USB Readonly mode, background color, activate flash and wma players, swap X/O buttons and delete hibernation.
+
+## Version 4.19.13 (2023-02-21)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r41913
+- You can now remove plugins using the Plugin Manager in the XMB or Recovery Menu. This doesn't delete the plugin or its files, only removes it from PLUGINS.TXT, to fully uninstall the plugin you can use the file manager to delete its files.
+- You can now edit text files (.txt, .cfg or .ini) using the file browser.
+
+## Version 4.19.12 (2023-02-19)
+- fixed ISOs with non-latin1 characters (only on XMB though, launcher/recovery still has issues with them).
+- launcher and recovery will now hide options that aren't available depending on device and model (ftp, ef0, etc) and CFW settings.
+- added option to change VSH region.
+- added support for DLC and Updates on ISO files.
+
+## Version 4.19.11 (2023-02-17)
+- You can now install plugins using the file browser (Recovery Menu or Custom Launcher).
+- Created Advanced VSH Menu, based on PRO VSH Menu and Ultimate VSH Menu, can be optionally installed to obtain advanced features in the XMB, including: change USB device, view available ISO drivers, mount Video ISO files, convert battery from normal to pandora and viceversa.
+- Added version number to Advanced VSH Menu and fixed typo.
+
+## Version 4.19.10 (2023-02-10)
+- https://github.com/PSP-Archive/ARK-4/releases/tag/r41910
+- Added new keywords for plugin system: `psx` and `ps1` as alternative to `pops`; `xmb` as alternative to `vsh` and `psp` as alternative to `umd`.
+- Added option to redirect ms0 to ef0 on custom launcher.
+- Added translations for XMB Control.
+- Fixed incompatibility between XMB Control and XMB Item Hider plugin (v1.3-fix3).
+- XMB Control will now hide useless settings depending on device.
+- Fixed issues when unmounting UMD Video ISO.
+- Added new themes "Black" and "Matrix".
+
 ## Version 4.19.9 (2023-02-08)
 - https://github.com/PSP-Archive/ARK-4/releases/tag/r4199
 - UMD Region Change is finally working! You can now play region locked UMD movies on any PSP model from any region. To change the UMD drive region, enter recovery menu and scroll to the last option, choose your region and exit recovery menu. Wait for the XMB to finish loading (the memory stick LED stops blinking) and insert the UMD you want to play.

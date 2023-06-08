@@ -129,6 +129,18 @@ static u32 g_caches_cnt;
 static u8 g_referenced[32];
 static u8 g_need_update = 0;
 
+void* my_malloc(size_t size){
+    SceUID uid = sceKernelAllocPartitionMemory(2, "", PSP_SMEM_High, size+sizeof(u32), NULL);
+    int* ptr = sceKernelGetBlockHeadAddr(uid);
+    ptr[0] = uid;
+    return &(ptr[1]);
+}
+
+void my_free(int* ptr){
+    int uid = ptr[-1];
+    sceKernelFreePartitionMemory(uid);
+}
+
 static inline u32 get_isocache_magic(void)
 {
     u32 version;
@@ -507,11 +519,11 @@ void *oe_realloc(void *ptr, int size)
 {
     void *p;
     
-    p = oe_malloc(size);
+    p = my_malloc(size);
 
     if(p != NULL && ptr != NULL) {
         memcpy(p, ptr, size);
-        oe_free(ptr);
+        my_free(ptr);
     }
 
     return p;
@@ -544,7 +556,7 @@ static int get_sfo_section(VirtualPBP *vpbp, u32 remaining, void *data)
     char disc_id[12];
     u32 parental_level = 1;
 
-    buf = oe_malloc(SECTOR_SIZE+64);
+    buf = my_malloc(SECTOR_SIZE+64);
 
     if (buf == NULL) {
         #ifdef DEBUG
@@ -560,28 +572,30 @@ static int get_sfo_section(VirtualPBP *vpbp, u32 remaining, void *data)
         #ifdef DEBUG
         printk("%s: isoRead -> 0x%08X\n", __func__, ret);
         #endif
-        oe_free(buf);
+        my_free(buf);
         return -37;
     }
 
     ret = get_sfo_string(buf_64, "TITLE", sfotitle, sizeof(sfotitle));
 
     if (ret < 0) {
-        oe_free(buf);
+        my_free(buf);
         return ret;
     }
 
     ret = get_sfo_string(buf_64, "DISC_ID", disc_id, sizeof(disc_id));
 
     if (ret < 0) {
-        oe_free(buf);
+        my_free(buf);
 
         return ret;
     }
 
     get_sfo_u32(buf_64, "PARENTAL_LEVEL", &parental_level);
 
-    oe_free(buf);
+    get_sfo_u32(buf_64, "HRKGMP_VER", &(vpbp->opnssmp_type));
+
+    my_free(buf);
     memcpy(virtualsfo+0x118, sfotitle, 64);
     memcpy(virtualsfo+0xf0, disc_id, 12);
     memcpy(virtualsfo+0x108, &parental_level, sizeof(parental_level));
@@ -620,7 +634,7 @@ static int get_pbp_section(VirtualPBP *vpbp, u32 remaining, int idx, void *data)
         goto out;
     }
 
-    buf = oe_malloc(buf_size + 64);
+    buf = my_malloc(buf_size + 64);
 
     if(buf == NULL) {
         #ifdef DEBUG
@@ -655,7 +669,7 @@ static int get_pbp_section(VirtualPBP *vpbp, u32 remaining, int idx, void *data)
         pos += re;
     }
 
-    oe_free(buf);
+    my_free(buf);
 
 out:
     return total_re;
@@ -670,12 +684,12 @@ int vpbp_init(void)
     g_sema = sceKernelCreateSema("VPBPSema", 0, 1, 1, NULL);
 
     if (g_caches != NULL) {
-        oe_free(g_caches);
+        my_free(g_caches);
         g_caches_cnt = 0;
     }
 
     g_caches_cnt = CACHE_MAX_SIZE;
-    g_caches = oe_malloc(sizeof(g_caches[0]) * g_caches_cnt);
+    g_caches = my_malloc(sizeof(g_caches[0]) * g_caches_cnt);
 
     if (g_caches == NULL) {
         g_caches_cnt = 0;
@@ -928,14 +942,17 @@ int vpbp_getstat(const char * file, SceIoStat * stat)
     return ret;
 }
 
-static int has_prometheus_module(VirtualPBP *vpbp)
+int has_prometheus_module(const char *isopath)
 {
     int ret;
     u32 size, lba;
+
+    int k1 = pspSdkSetK1(0);
     
-    ret = isoOpen(vpbp->name);
+    ret = isoOpen(isopath);
 
     if (ret < 0) {
+        pspSdkSetK1(k1);
         return 0;
     }
 
@@ -944,7 +961,47 @@ static int has_prometheus_module(VirtualPBP *vpbp)
 
     isoClose();
 
+    pspSdkSetK1(k1);
     return ret;
+}
+
+int has_update_file(const char* isopath, char* update_file){
+    // game ID is always at offset 0x8373 within the ISO
+    int lba = 16;
+    int pos = 883;
+
+    char game_id[10];
+
+    int k1 = pspSdkSetK1(0);
+
+    isoOpen(isopath);
+    isoRead(game_id, lba, pos, 10);
+    isoClose();
+
+    // remove the dash in the middle: ULUS-01234 -> ULUS01234
+    game_id[4] = game_id[5];
+    game_id[5] = game_id[6];
+    game_id[6] = game_id[7];
+    game_id[7] = game_id[8];
+    game_id[8] = game_id[9];
+    game_id[9] = 0;
+
+    // try to find the update file
+    static char* devs[] = {"ms0:", "ef0:"};
+
+    for (int i=0; i<2; i++){
+        sprintf(update_file, "%s/PSP/GAME/%s/PBOOT.PBP", devs[i], game_id);
+        int fd = sceIoOpen(update_file, PSP_O_RDONLY, 0777);
+        if (fd >= 0){
+            // found
+            sceIoClose(fd);
+            pspSdkSetK1(k1);
+            return 1;
+        }
+    }
+    // not found
+    pspSdkSetK1(k1);
+    return 0;
 }
 
 typedef struct _pspMsPrivateDirent {
@@ -974,9 +1031,9 @@ static int get_ISO_shortname(char *s_name, u32 size, const char *l_name)
         goto exit;
     }
 
-    prefix = oe_malloc(512);
-    pri_dirent = oe_malloc(sizeof(*pri_dirent));
-    dirent = oe_malloc(sizeof(*dirent));
+    prefix = my_malloc(512);
+    pri_dirent = my_malloc(sizeof(*pri_dirent));
+    dirent = my_malloc(sizeof(*dirent));
 
     if(prefix == NULL) {
         result = -3;
@@ -1012,14 +1069,16 @@ static int get_ISO_shortname(char *s_name, u32 size, const char *l_name)
 
             if (ret >= 0) {
                 if (!strcmp(dirent->d_name, p+1)) {
-                    strncpy(s_name, l_name, MIN(p + 1 - l_name, size));
-                    s_name[MIN(p + 1 - l_name, size-1)] = '\0';
-                    strcat(s_name, pri_dirent->s_name);
-                    #ifdef DEBUG
-                    printk("%s: final %s\n", __func__, s_name);
-                    #endif
-                    result = 0;
-                    break;
+                    if (pri_dirent->s_name[0] != 0){
+                        strncpy(s_name, l_name, MIN(p + 1 - l_name, size));
+                        s_name[MIN(p + 1 - l_name, size-1)] = '\0';
+                        strcat(s_name, pri_dirent->s_name);
+                        #ifdef DEBUG
+                        printk("%s: final %s\n", __func__, s_name);
+                        #endif
+                        result = 0;
+                        break;
+                    }
                 }
             }
         } while (ret > 0);
@@ -1034,9 +1093,9 @@ static int get_ISO_shortname(char *s_name, u32 size, const char *l_name)
     }
 
 exit:
-    oe_free(prefix);
-    oe_free(pri_dirent);
-    oe_free(dirent);
+    my_free(prefix);
+    my_free(pri_dirent);
+    my_free(dirent);
 
     return result;
 }
@@ -1056,6 +1115,9 @@ int vpbp_loadexec(char * file, struct SceKernelLoadExecVSHParam * param)
         return -31;
     }
 
+    // get ISO path with non-latin1 support
+    get_ISO_shortname(vpbp->name, sizeof(vpbp->name), vpbp->name);
+
     //set iso file for reboot
     sctrlSESetUmdFile(vpbp->name);
 
@@ -1063,27 +1125,50 @@ int vpbp_loadexec(char * file, struct SceKernelLoadExecVSHParam * param)
     sctrlSESetDiscType(PSP_UMD_TYPE_GAME);
     sctrlSESetBootConfFileIndex(MODE_INFERNO);
 
-    //reset and configure reboot parameter
-    memset(param, 0, sizeof(param));
-    param->size = sizeof(param);
-    
-    param->key = "umdemu";
-    param->args = 33;
-    apitype = 0x123;
-    loadexec_file = vpbp->name;
+    u32 opn_type = vpbp->opnssmp_type;
+    u32 *info = (u32 *)sceKernelGetGameInfo();
+    if( opn_type )
+        info[216/4] = opn_type;
 
-    if (psp_model == PSP_GO) {
-        char devicename[20];
-        ret = get_device_name(devicename, sizeof(devicename), vpbp->name);
-        if(ret == 0 && 0 == stricmp(devicename, "ef0:")) {
-            apitype = 0x125;
+    param->key = "umdemu";
+    apitype = 0x123;
+
+    static char pboot_path[256];
+    int has_pboot = has_update_file(vpbp->name, pboot_path);
+
+    if (has_pboot){
+        // configure to use dlc/update
+        apitype = 0x124;
+        param->argp = pboot_path;
+        param->args = strlen(pboot_path) + 1;
+        loadexec_file = param->argp;
+
+        if (psp_model == PSP_GO) {
+            char devicename[20];
+            ret = get_device_name(devicename, sizeof(devicename), pboot_path);
+            if(ret == 0 && 0 == stricmp(devicename, "ef0:")) {
+                apitype = 0x126;
+            }
         }
     }
+    else{
+        //reset and configure reboot parameter
+        loadexec_file = vpbp->name;
 
-    if (has_prometheus_module(vpbp)) {
-        param->argp = "disc0:/PSP_GAME/SYSDIR/EBOOT.OLD";
-    } else {
-        param->argp = "disc0:/PSP_GAME/SYSDIR/EBOOT.BIN";
+        if (psp_model == PSP_GO) {
+            char devicename[20];
+            ret = get_device_name(devicename, sizeof(devicename), vpbp->name);
+            if(ret == 0 && 0 == stricmp(devicename, "ef0:")) {
+                apitype = 0x125;
+            }
+        }
+
+        if (has_prometheus_module(vpbp->name)) {
+            param->argp = "disc0:/PSP_GAME/SYSDIR/EBOOT.OLD";
+        } else {
+            param->argp = "disc0:/PSP_GAME/SYSDIR/EBOOT.BIN";
+        }
+        param->args = 33;
     }
 
     //start game image
@@ -1215,14 +1300,14 @@ int vpbp_dclose(SceUID fd)
 int vpbp_reset(int cache)
 {
     if (g_vpbps != NULL) {
-        oe_free(g_vpbps);
+        my_free(g_vpbps);
         g_vpbps = NULL;
         g_vpbps_cnt = 0;
     }
 
     if(cache == 1) {
         if (g_caches != NULL) {
-            oe_free(g_caches);
+            my_free(g_caches);
             g_caches = NULL;
             g_caches_cnt = 0;
         }

@@ -5,7 +5,7 @@
 #include "entry.h"
 #include "common.h"
 #include "gfx.h"
-#include "optionsMenu.h"
+#include "optionsmenu.h"
 #include "system_entry.h"
 
 using namespace std;
@@ -17,11 +17,18 @@ enum{
     PASTE,
     DELETE,
     RENAME,
-    MKDIR,
+    CREATE,
     MS0_DIR,
     EF0_DIR,
     FTP_DIR,
+    UMD_DIR,
 };
+
+typedef struct _pspMsPrivateDirent {
+	SceSize size;
+	char s_name[16];
+	char l_name[1024];
+} pspMsPrivateDirent;
 
 class BrowserDriver{
     public:
@@ -33,6 +40,7 @@ class BrowserDriver{
         virtual void deleteFile(string path) = 0;
         virtual void deleteFolder(string path) = 0;
         virtual void createFolder(string path) = 0;
+        virtual void createFile(string path) = 0;
         virtual void copyFileTo(string orig, string dest, int* progress) = 0;
         virtual void copyFileFrom(string orig, string dest, int* progress) = 0;
 };
@@ -62,6 +70,8 @@ class Browser : public SystemEntry{
         void setName(string name){};
         
         string getInfo(){
+            if (devsize.size() > 0)
+                return this->cwd + " (Free size: "+devsize+")";
             return this->cwd;
         }
         
@@ -76,6 +86,7 @@ class Browser : public SystemEntry{
         bool isStillLoading(){ return false; }
         
         static void recursiveFolderDelete(string path);
+        static long recursiveSize(string path);
         
         static BrowserDriver* ftp_driver;
         
@@ -84,6 +95,8 @@ class Browser : public SystemEntry{
     private:
     
         string cwd; // Current Working Directory
+
+        string devsize; // device size (only if in root)
         
         vector<Entry*>* entries; // entries in the current directory
         
@@ -99,6 +112,7 @@ class Browser : public SystemEntry{
         int animation;
         
         /* Screen drawing thread data */
+        bool hide_main_window;
         bool draw_progress;
         int progress;
         int max_progress;
@@ -115,16 +129,12 @@ class Browser : public SystemEntry{
         // options menu entries possition of the entries
         int pEntryIndex;
         
-        /* Common browser images */
-        Image* checkBox;
-        Image* uncheckBox;
-        Image* folderIcon;
-        Image* fileIcon;
-        
         /* Highlight the currently selected item? */
         bool enableSelection;
     
         void clearEntries();
+
+        bool isRootDir(string dir);
     
         void moveDirUp();
         
@@ -151,6 +161,8 @@ class Browser : public SystemEntry{
         
         void down();
         void up();
+		void left();
+		void right();
         
         void deleteFolder(string path);
         void deleteFile(string path);
@@ -163,12 +175,16 @@ class Browser : public SystemEntry{
         string checkDestExists(string src, string destination, string name);
         
         void extractArchive(int type);
+        void installPlugin();
+        void installTheme();
         
         void copy();
         void cut();
         void paste();
         
         void makedir();
+        void makefile();
+        void createNew();
         
         void rename();
         

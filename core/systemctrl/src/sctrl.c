@@ -38,75 +38,7 @@
 #include "imports.h"
 #include "sysmem.h"
 
-int sctrlKernelLoadExecVSHDisc(const char *file, struct SceKernelLoadExecVSHParam *param)
-{
-    int k1 = pspSdkSetK1(0);
-    int res = -1;
-    int (*LoadExecVSHDisc)() = sctrlHENFindFunction("sceLoadExec", "LoadExecForKernel", 0xD8320A28);
-    res = LoadExecVSHDisc(file, param);
-    pspSdkSetK1(k1);
-    return res;
-}
-
-int sctrlKernelLoadExecVSHDiscUpdater(const char *file, struct SceKernelLoadExecVSHParam *param)
-{
-    int k1 = pspSdkSetK1(0);
-    int res = -1;
-    int (*LoadExecVSHDiscUpdater)() = sctrlHENFindFunction("sceLoadExec", "LoadExecForKernel", 0xD4B49C4B);
-    res = LoadExecVSHDiscUpdater(file, param);
-    pspSdkSetK1(k1);
-    return res;
-}
-
-int sctrlKernelLoadExecVSHMs1(const char *file, struct SceKernelLoadExecVSHParam *param)
-{
-    int k1 = pspSdkSetK1(0);
-    int res = -1;
-    int (*LoadExecVSHMs1)() = sctrlHENFindFunction("sceLoadExec", "LoadExecForKernel", 0x4FB44D27);
-    res = LoadExecVSHMs1(file, param);
-    pspSdkSetK1(k1);
-    return res;
-}
-
-int sctrlKernelLoadExecVSHMs2(const char *file, struct SceKernelLoadExecVSHParam *param)
-{
-    int k1 = pspSdkSetK1(0);    
-    int res = -1;
-    int (*LoadExecVSHMs2)() = sctrlHENFindFunction("sceLoadExec", "LoadExecForKernel", 0xD940C83C);
-    res = LoadExecVSHMs2(file, param);
-    pspSdkSetK1(k1);
-    return res;
-}
-
-int sctrlKernelLoadExecVSHMs3(const char *file, struct SceKernelLoadExecVSHParam *param)
-{
-    int k1 = pspSdkSetK1(0);    
-    int res = -1;
-    int (*LoadExecVSHMs3)() = sctrlHENFindFunction("sceLoadExec", "LoadExecForKernel", 0xCC6A47D2);
-    res = LoadExecVSHMs3(file, param);
-    pspSdkSetK1(k1);
-    return res;
-}
-
-int sctrlKernelLoadExecVSHMs4(const char *file, struct SceKernelLoadExecVSHParam *param)
-{
-    int k1 = pspSdkSetK1(0);    
-    int res = -1;
-    int (*LoadExecVSHMs4)() = sctrlHENFindFunction("sceLoadExec", "LoadExecForKernel", 0x00745486);
-    res = LoadExecVSHMs4(file, param);
-    pspSdkSetK1(k1);
-    return res;
-}
-
-int sctrlKernelLoadExecVSHEf2(const char *file, struct SceKernelLoadExecVSHParam *param)
-{
-    int k1 = pspSdkSetK1(0);
-    int res = -1;
-    int (*LoadExecVSHEf2)() = sctrlHENFindFunction("sceLoadExec", "LoadExecForKernel", 0x032A7938);
-    res = LoadExecVSHEf2(file, param);
-    pspSdkSetK1(k1);
-    return res;
-}
+#define PSP_INIT_APITYPE_EF2 0x152
 
 // Load Execute Module via Kernel Internal Function
 int sctrlKernelLoadExecVSHWithApitype(int apitype, const char * file, struct SceKernelLoadExecVSHParam * param)
@@ -126,6 +58,35 @@ int sctrlKernelLoadExecVSHWithApitype(int apitype, const char * file, struct Sce
     
     // Return Error Code
     return result;
+}
+
+int sctrlKernelLoadExecVSHMs1(const char *file, struct SceKernelLoadExecVSHParam *param) {
+	return sctrlKernelLoadExecVSHWithApitype(PSP_INIT_APITYPE_MS1, file, param);
+}
+
+int sctrlKernelLoadExecVSHMs2(const char *file, struct SceKernelLoadExecVSHParam *param) {
+	return sctrlKernelLoadExecVSHWithApitype(PSP_INIT_APITYPE_MS2, file, param);
+}
+
+int sctrlKernelLoadExecVSHMs3(const char *file, struct SceKernelLoadExecVSHParam *param) {
+	return sctrlKernelLoadExecVSHWithApitype(PSP_INIT_APITYPE_MS3, file, param);
+}
+
+int sctrlKernelLoadExecVSHMs4(const char *file, struct SceKernelLoadExecVSHParam *param) {
+	return sctrlKernelLoadExecVSHWithApitype(PSP_INIT_APITYPE_MS4, file, param);
+}
+
+int sctrlKernelLoadExecVSHDisc(const char *file, struct SceKernelLoadExecVSHParam *param) {
+	return sctrlKernelLoadExecVSHWithApitype(PSP_INIT_APITYPE_DISC, file, param);
+}
+
+int sctrlKernelLoadExecVSHDiscUpdater(const char *file, struct SceKernelLoadExecVSHParam *param) {
+	return sctrlKernelLoadExecVSHWithApitype(PSP_INIT_APITYPE_DISC_UPDATER, file, param);
+}
+
+int sctrlKernelLoadExecVSHEf2(const char *file, struct SceKernelLoadExecVSHParam *param)
+{
+    return sctrlKernelLoadExecVSHWithApitype(PSP_INIT_APITYPE_EF2, file, param);
 }
 
 int sctrlKernelExitVSH(struct SceKernelLoadExecVSHParam *param)
@@ -425,9 +386,20 @@ int sctrlGetInitPARAM(const char * paramName, u16 * paramType, u32 * paramLength
         // Return Error Code
         return 0x80000104;
     }
-        
-    // Get Init Filename
-    const char * pbpPath = sceKernelInitFileName();
+
+    const char * pbpPath = NULL;
+    u32 real_magic = 0;
+    u32 paramOffset = 0;
+
+    int bootfrom = sceKernelBootFrom();
+	if (bootfrom == PSP_BOOT_DISC){
+        pbpPath = "disc0:/PSP_GAME/PARAM.SFO";
+        real_magic = 0x46535000; // PSF magic
+    }
+    else{
+        pbpPath = sceKernelInitFileName();
+        real_magic = 0x50425000; // PBP magic
+    }
     
     // Init Filename not found
     if (pbpPath == NULL)
@@ -437,25 +409,6 @@ int sctrlGetInitPARAM(const char * paramName, u16 * paramType, u32 * paramLength
         
         // Return Error Code
         return 0x80010002;
-    }
-        
-    // Get File Extension
-    const char * pbpExtension = pbpPath;
-    pbpExtension += strlen(pbpExtension) - 4;
-    if (pbpExtension < pbpPath)
-        pbpExtension = ".BIN";
-    
-    // Invalid Format
-    if (pbpExtension[0] != '.' ||
-        (pbpExtension[1] != 'P' && pbpExtension[1] != 'p') ||
-        (pbpExtension[2] != 'B' && pbpExtension[2] != 'b') ||
-        (pbpExtension[3] != 'P' && pbpExtension[3] != 'p'))
-    {
-        // Restore Syscall Permissions
-        pspSdkSetK1(k1);
-        
-        // Return Error Code
-        return 0x80000108;
     }
     
     // Open PBP File
@@ -470,13 +423,26 @@ int sctrlGetInitPARAM(const char * paramName, u16 * paramType, u32 * paramLength
         // Return Error Code
         return 0x80010002;
     }
+
+    int magic;
+    sceIoRead(fd, &magic, sizeof(magic));
+    if (magic != real_magic){ // Invalid Format
+        // close
+        sceIoClose(fd);
+        
+        // Restore Syscall Permissions
+        pspSdkSetK1(k1);
+
+        // Return Error Code
+        return 0x80000108;
+    }
     
-    // seek to PARAM.SFO offset variable
-    sceIoLseek(fd, 0x08, PSP_SEEK_SET);
-    
-    // read PARAM.SFO offset
-    u32 paramOffset = 0;
-    sceIoRead(fd, &paramOffset, sizeof(u32));
+    if (real_magic == 0x50425000){ // PBP
+        // seek to PARAM.SFO offset variable
+        sceIoLseek(fd, 0x08, PSP_SEEK_SET);
+        // read PARAM.SFO offset
+        sceIoRead(fd, &paramOffset, sizeof(u32));
+    }
     
     // seek to PARAM.SFO offset
     sceIoLseek(fd, paramOffset, PSP_SEEK_SET);
@@ -591,6 +557,9 @@ int sctrlGetInitPARAM(const char * paramName, u16 * paramType, u32 * paramLength
     
     // close pbp file
     sceIoClose(fd);
+
+    // Restore Syscall Permissions
+    pspSdkSetK1(k1);
     
     // Return Error Code (we just treat a missing parameter as file not found, it should work)
     return 0x80010002;

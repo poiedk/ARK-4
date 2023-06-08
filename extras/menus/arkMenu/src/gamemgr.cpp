@@ -4,8 +4,10 @@
 #include <fstream>
 #include <unistd.h>
 #include <algorithm>
+#include <stdlib.h>
 #include "system_mgr.h"
 #include "gamemgr.h"
+#include "music_player.h"
 #include "osk.h"
 #include "pmf.h"
 
@@ -15,12 +17,16 @@ static GameManager* self = NULL;
 
 static bool loadingData = false;
 
+ARKConfig* ark_config;
+
 GameManager::GameManager(){
 
     // set the global self variable as this instance for the threads to use it
     self = this;
     
     this->use_categories = true;
+    this->scanning = true;
+    this->optionsmenu = NULL;
 
     // initialize the categories
     this->selectedCategory = -2;
@@ -32,7 +38,7 @@ GameManager::GameManager(){
     this->maxDraw = MAX_CATEGORIES;
     this->dynamicIconRunning = ICONS_LOADING;
     this->iconSema = sceKernelCreateSema("icon0_sema",  0, 1, 1, NULL);
-    this->iconThread = sceKernelCreateThread("icon0_thread", GameManager::loadIcons, 0x10, 0x20000, PSP_THREAD_ATTR_USER, NULL);
+    this->iconThread = sceKernelCreateThread("icon0_thread", GameManager::loadIcons, 0x10, 0x20000, PSP_THREAD_ATTR_USER|PSP_THREAD_ATTR_VFPU, NULL);
     sceKernelStartThread(this->iconThread,  0, NULL);
     
 }
@@ -47,7 +53,7 @@ int GameManager::loadIcons(SceSize _args, void *_argp){
 
     while (self->dynamicIconRunning != ICONS_STOPPED){
         // check UMD status
-        sceKernelDelayThread(100000);
+        sceKernelDelayThread(0);
         std::vector<Entry*>* game_entries = self->categories[GAME]->getVector();
         bool has_umd = UMD::isUMD();
         bool umd_loaded = game_entries->size() > 0 && string("UMD") == game_entries->at(0)->getType();
@@ -71,7 +77,6 @@ int GameManager::loadIcons(SceSize _args, void *_argp){
         // load icons
         if (self->selectedCategory < 0){
             if (self->selectedCategory == -1) self->findEntries();
-            sceKernelDelayThread(0);
             continue;
         }
         for (int i=0; i<MAX_CATEGORIES; i++){
@@ -118,6 +123,8 @@ Menu* GameManager::getMenu(EntryType t){
 
 void GameManager::findEntries(){
 
+    this->scanning = true;
+
     int ms_is_ef = sctrlKernelMsIsEf();
 
     // clear entries
@@ -147,9 +154,7 @@ void GameManager::findEntries(){
 
     // add recovery menu
     if (common::getConf()->show_recovery){
-        char cwd[128];
-        getcwd((char*)cwd, sizeof(cwd));
-        string recovery_path = string(cwd) + "/" + "RECOVERY.PBP";
+        string recovery_path = string(common::getArkConfig()->arkpath) + "RECOVERY.PBP";
         if (common::fileExists(recovery_path)){
             Eboot* recovery_menu = new Eboot(recovery_path);
             recovery_menu->setName("Recovery Menu");
@@ -163,6 +168,8 @@ void GameManager::findEntries(){
         if (!this->categories[i]->empty())
             this->selectedCategory = i;
     }
+
+    this->scanning = false;
 }
 
 void GameManager::findEboots(const char* path){ 
@@ -199,27 +206,39 @@ void GameManager::findEboots(const char* path){
 
 void GameManager::findISOs(const char* path){
 
-    struct dirent* dit;
-    DIR* dir = opendir(path);
+    int dir = sceIoDopen(path);
     
+    SceIoDirent entry;
+    SceIoDirent* dit = &entry;
+    memset(&entry, 0, sizeof(SceIoDirent));
+
+    pspMsPrivateDirent* pri_dirent = (pspMsPrivateDirent*)malloc(sizeof(pspMsPrivateDirent));
+    pri_dirent->size = sizeof(pspMsPrivateDirent);
+    entry.d_private = (void*)pri_dirent;
+
     if (dir == NULL)
         return;
         
-    while ((dit = readdir(dir))){
-
-        string fullpath = string(path)+string(dit->d_name);
+    while (sceIoDread(dir, dit) > 0){
 
         if (strcmp(dit->d_name, ".") == 0) continue;
         if (strcmp(dit->d_name, "..") == 0) continue;
+
+        string fullpath = string(path)+string(dit->d_name);
+
         if (FIO_SO_ISDIR(dit->d_stat.st_attr)){
             if (common::getConf()->scan_cat && string(dit->d_name) != string("VIDEO")){
                 findISOs((string(path) + dit->d_name + "/").c_str());
             }
             continue;
         }
+        else if (!common::fileExists(fullpath)){
+            fullpath = string(path) + string(dit->d_name).substr(0, 4) + string(pri_dirent->s_name);
+        }
         if (Iso::isISO(fullpath.c_str())) this->categories[GAME]->addEntry(new Iso(fullpath));
     }
-    closedir(dir);
+    sceIoDclose(dir);
+    free(pri_dirent);
 }
 
 void GameManager::findSaveEntries(const char* path){
@@ -354,10 +373,17 @@ void GameManager::draw(){
         }
         if (this->selectedCategory < this->maxDraw)
             this->categories[this->selectedCategory]->draw(true);
+        if (optionsmenu) optionsmenu->draw();
     }
-    if (loadingData){
+    if (loadingData || selectedCategory == -1){
+        static float angle = 1.0;
         Image* img = common::getImage(IMAGE_WAITICON);
-        img->draw((480-img->getTexture()->width)/2, (272-img->getTexture()->height)/2);
+        img->draw_rotate(
+            (480-img->getTexture()->width)/2,
+            (272-img->getTexture()->height)/2,
+            angle
+        );
+        angle+=0.2;
     }
 }
 
@@ -404,6 +430,7 @@ void GameManager::endAllThreads(){
     sceKernelWaitThreadEnd(iconThread, 0);
 }
 
+
 void GameManager::control(Controller* pad){
 
     if (pad->down()){
@@ -428,16 +455,21 @@ void GameManager::control(Controller* pad){
     }
     else if (pad->start()){
         if (selectedCategory >= 0 && !categories[selectedCategory]->isAnimating()){
-            this->endAllThreads();
-            this->getEntry()->execute();
+			this->startBoot();
         }
     }
     else if (pad->select()){
         if (selectedCategory != -1){
             common::playMenuSound();
-            self->waitIconsLoad();
+            this->waitIconsLoad();
             GameManager::updateGameList(NULL);
-            self->waitIconsLoad();
+            this->waitIconsLoad();
+        }
+    }
+    else if (pad->LT()){
+        if (selectedCategory >= 0 && !categories[selectedCategory]->isAnimating()){
+            common::playMenuSound();
+            this->gameOptionsMenu();
         }
     }
 }
@@ -479,8 +511,17 @@ void GameManager::execApp(){
     sceKernelDelayThread(0);
 }
 
-bool GameManager::pmfPrompt(){
+static int loading_data;
 
+int load_thread(int argc, void* argp){
+    Entry* e = (Entry*)(*(void**)argp);
+    e->getTempData2();
+    loading_data = false;
+    sceKernelExitDeleteThread(0);
+    return 0;
+}
+
+bool GameManager::pmfPrompt(){
 
     bool ret;
     
@@ -490,18 +531,25 @@ bool GameManager::pmfPrompt(){
     
     Entry* entry = this->getEntry();
 
-    common::clearScreen(CLEAR_COLOR);
-    entry->drawBG();
-    entry->getIcon()->draw(10, 98);
+    loading_data = true;
+
+    int thd = sceKernelCreateThread("gamedata_thread", (SceKernelThreadEntry)&load_thread, 0x10, 0x10000, PSP_THREAD_ATTR_USER|PSP_THREAD_ATTR_VFPU, NULL);
+    sceKernelStartThread(thd, sizeof(entry), &entry);
+
+    float angle = 1.0;
     Image* img = common::getImage(IMAGE_WAITICON);
-    img->draw((480-img->getWidth())/2, (272-img->getHeight())/2);
-    common::flipScreen();
-    
-    entry->getTempData2();
+    while (loading_data){
+        common::clearScreen(CLEAR_COLOR);
+        entry->drawBG();
+        entry->getIcon()->draw(10, 98);
+        img->draw_rotate((480-img->getWidth())/2, (272-img->getHeight())/2, angle);
+        angle+=0.2;
+        common::flipScreen();
+    }
     
     bool pmfPlayback = entry->getIcon1() != NULL || entry->getSnd() != NULL;
         
-    if (pmfPlayback){
+    if (pmfPlayback && !MusicPlayer::isPlaying()){
         ret = pmfStart(entry, 10, 98);
     }
     else{
@@ -512,7 +560,7 @@ bool GameManager::pmfPrompt(){
             entry->drawBG();
             entry->getIcon()->draw(10, 98);
             common::flipScreen();
-            control.update();
+            control.update(1);
             if (control.accept()){
                 ret = true;
                 break;
@@ -529,4 +577,160 @@ bool GameManager::pmfPrompt(){
     }
     SystemMgr::resumeDraw();
     return ret;
+}
+
+void GameManager::gameOptionsMenu(){
+    t_options_entry options_entries[] = {
+        {OPTIONS_CANCELLED, "Cancel"},
+        {0, "View Info"},
+        {1, "Rename"},
+        {2, "Delete"},
+    };
+    optionsmenu = new OptionsMenu("Game Options", sizeof(options_entries)/sizeof(t_options_entry), options_entries);
+    int ret = optionsmenu->control();
+    OptionsMenu* aux = optionsmenu;
+    optionsmenu = NULL;
+    delete aux;
+
+    switch (ret){
+    case 0:{
+        // create a new options menu but each entry is some info about the game
+        Entry* e = this->getEntry();
+        string path = e->getPath();
+        if (e->getType() == "EBOOT"){
+            path = path.substr(0, path.rfind('/')+1);
+        }
+        SfoInfo info = e->getSfoInfo();
+        string fullname = string("Name - ") + string(info.title);
+        string gameid = string("Game ID - ") + string(info.gameid);
+        string fullpath = "Path - " + e->getPath();
+        string size = "Size - " + common::beautifySize(Browser::recursiveSize(path));
+        t_options_entry gameinfo_entries[] = {
+            {0, (char*)fullname.c_str()},
+            {1, (char*)gameid.c_str()},
+            {2, (char*)size.c_str()},
+            {3, (char*)fullpath.c_str()}
+        };
+        optionsmenu = new OptionsMenu("Game Info", sizeof(gameinfo_entries)/sizeof(t_options_entry), gameinfo_entries);
+        optionsmenu->control();
+        OptionsMenu* aux = optionsmenu;
+        optionsmenu = NULL;
+        delete aux;
+    } break;
+    case 1:{
+        // rename the ISO or Eboot folder name
+        SystemMgr::pauseDraw();
+        Entry* e = this->getEntry();
+        string name = e->getName();
+        OSK osk;
+
+        char parent[128];
+        strcpy(parent, e->getPath().c_str());
+        char* pname = strstr(parent, name.c_str());
+        *pname = 0;
+        
+        osk.init("New name for Game", name.c_str(), 50);
+        osk.loop();
+        if(osk.getResult() != OSK_CANCEL)
+        {
+            char tmpText[51];
+            osk.getText((char*)tmpText);
+            string newpath = (string(parent)+string(tmpText));
+            string oldpath = (string(parent)+name);
+            
+            sceIoRename(oldpath.c_str(), newpath.c_str());
+            e->setName(tmpText);
+            e->setPath(newpath);
+        }
+        osk.end();
+        SystemMgr::resumeDraw();
+    } break;
+    case 2:{
+        // remove current entry from list (adjusting index and selectedCategory accordingly), delete file or folder depending on ISO/EBOOT
+        // make checks to prevent deleting stuff like "UMD Drive" and "Recovery" entries
+        Entry* e = this->getEntry();
+        string name = e->getName();
+        if (name != "UMD Drive" && name != "Recovery Menu"){
+            // pause drawing so we don't crash due to race condition
+            SystemMgr::pauseDraw();
+            // get current menu and it's game list
+            Menu* category = categories[selectedCategory];
+            std::vector<Entry*>* entries = category->getVector();
+            // remove entry from list
+            entries->erase(entries->begin()+category->getIndex());
+            // adjust selectedCategory
+            int retries = 0;
+            while (categories[selectedCategory]->getVectorSize() == 0){
+                if (selectedCategory < POPS) selectedCategory++;
+                else selectedCategory = GAME;
+                if (++retries >= 4){ // can't find a valid menu
+                    selectedCategory = -2; // no games available
+                    break;
+                }
+            }
+            // resume drawing
+            SystemMgr::resumeDraw();
+
+            // delete file/folder
+            if (e->getType() == "ISO"){
+                sceIoRemove(e->getPath().c_str());
+            }
+            else if (e->getType() == "EBOOT"){
+                string path = e->getPath();
+                if (strstr(path.c_str(), "/PSP/SAVEDATA/") != NULL){
+                    // remove eboot only
+                    sceIoRemove(e->getPath().c_str());
+                }
+                else{
+                    string path = e->getPath();
+                    // remove entire folder
+                    string folder = path.substr(0, path.rfind("/")+1);
+                    Browser::recursiveFolderDelete(folder);
+                    if(strstr(path.c_str(), "%/") != NULL) {
+                        // remove 1.50 kxploit folder
+                        path.erase(path.find("%/"));
+                        path += '/';
+                        folder = path;
+                        Browser::recursiveFolderDelete(folder);
+                    }
+                }
+            }
+            // free resources
+            delete e;
+        }
+    }break;
+    default: break;
+    }
+}
+
+void GameManager::startBoot(){
+    switch (common::getConf()->startbtn){
+    case 0: { // Default Start Button (Current)
+        this->endAllThreads();
+        this->getEntry()->execute();
+    } break;
+    case 1: { // Last game
+        const char* last_game = common::getConf()->last_game;
+        if (Eboot::isEboot(last_game)){
+            this->endAllThreads();
+            Eboot* eboot = new Eboot(last_game);
+            eboot->execute();
+        }
+        else if (Iso::isISO(last_game)){
+            this->endAllThreads();
+            Iso* iso = new Iso(last_game);
+            iso->execute();
+        }
+    } break;
+    case 2: { // Random ISO
+        if (this->categories[GAME]->getVectorSize() > 0){
+            this->endAllThreads();
+            srand(time(NULL));
+            int rand_idx = rand() % this->categories[GAME]->getVectorSize();
+            Entry* e = this->categories[GAME]->getEntry(rand_idx);
+            e->execute();
+        }
+    } break;
+    default: break;
+    }
 }

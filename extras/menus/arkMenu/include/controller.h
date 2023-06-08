@@ -7,7 +7,7 @@
 class Controller{
 
     private:
-        SceCtrlData* pad;
+        SceCtrlData pad;
         
         u32 nowpad, newpad, oldpad;
         
@@ -19,7 +19,7 @@ class Controller{
         ~Controller();
         
         // update controller data
-        void update();
+        void update(int ignore=3);
         // wait until there's no input in controller
         void flush();
         
@@ -44,6 +44,7 @@ class Controller{
         bool LT();
         bool start();
         bool select();
+        bool home();
 };
         
 

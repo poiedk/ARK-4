@@ -58,9 +58,13 @@ static void hook_iso_directory_io(void);
 static void patch_sceCtrlReadBufferPositive(void); 
 static void patch_Gameboot(SceModule2 *mod); 
 static void patch_hibblock(SceModule2 *mod); 
-static void patch_msvideo_main_plugin_module(u32 text_addr);
+static void patch_msvideo_main_plugin_module(SceModule2* mod);
 static void patch_htmlviewer_plugin_module(u32 text_addr);
 static void patch_htmlviewer_utility_module(u32 text_addr);
+
+extern SEConfig* se_config;
+
+extern int has_umd_iso;
 
 static int vshpatch_module_chain(SceModule2 *mod)
 {
@@ -88,10 +92,36 @@ static int vshpatch_module_chain(SceModule2 *mod)
     }
 
     if(0 == strcmp(mod->modname, "msvideo_main_plugin_module")) {
-        patch_msvideo_main_plugin_module(text_addr);
+        patch_msvideo_main_plugin_module(mod);
         sync_cache();
         goto exit;
     }
+
+    if( 0 == strcmp(mod->modname, "update_plugin_module")) {
+		patch_update_plugin_module(mod);
+		sync_cache();
+		goto exit;
+	}
+
+	if(0 == strcmp(mod->modname, "SceUpdateDL_Library")) {
+		patch_SceUpdateDL_Library(mod);
+		sync_cache();
+		goto exit;
+	}
+
+    if(0 == strcmp(mod->modname, "sceVshBridge_Driver")) {
+        
+        if (se_config->skiplogos){
+		    patch_Gameboot(mod);
+        }
+
+		if (psp_model == PSP_GO && se_config->hibblock) {
+			patch_hibblock(mod);
+		}
+
+		sync_cache();
+		goto exit;
+	}
 
 exit:
     if (previous) previous(mod);
@@ -105,6 +135,23 @@ static void patch_sceCtrlReadBufferPositive(void)
     hookImportByNID(mod, "sceCtrl_driver", 0xBE30CED0, _sceCtrlReadBufferPositive);
     g_sceCtrlReadBufferPositive = (void *) sctrlHENFindFunction("sceController_Service", "sceCtrl", 0x1F803938);
     sctrlHENPatchSyscall(g_sceCtrlReadBufferPositive, _sceCtrlReadBufferPositive);
+}
+
+static void patch_Gameboot(SceModule2 *mod)
+{
+    hookImportByNID(mod, "sceDisplay_driver", 0x3552AB11, 0);
+}
+
+static void patch_hibblock(SceModule2 *mod)
+{
+    u32 text_addr = mod->text_addr;
+    u32 top_addr = text_addr + mod->text_size;
+    for (u32 addr=text_addr; addr<top_addr; addr+=4){
+        if (_lw(addr) == 0x7C022804){
+            MAKE_DUMMY_FUNCTION_RETURN_0(addr - 8);
+            break;
+        }
+    }
 }
 
 static inline void ascii2utf16(char *dest, const char *src)
@@ -149,25 +196,68 @@ static void patch_sysconf_plugin_module(SceModule2 *mod)
     u32 top_addr = text_addr+mod->text_size;
     u32 p = 0;
     u32 a = 0;
-    char str[50];
     u32 addr;
-    for (addr=text_addr; addr<top_addr; addr+=4){
+    char str[50];
+
+    SceIoStat stat; int test_fd = sceIoGetstat("flash0:/vsh/resource/13-27.bmp", &stat);
+
+    int patches = (psp_model==PSP_1000 && test_fd >= 0)? 2 : 1;
+    for (addr=text_addr; addr<top_addr && patches; addr+=4){
         if (_lw(addr) == 0x34C600C9 && _lw(addr+8) == NOP){
             a = addr+20;
-            break;
+            patches--;
+        }
+        else if (psp_model == PSP_1000 && test_fd >= 0 && _lw(addr) == 0x26530008 && _lw(addr-4) == 0x24040018){
+            // allow slim colors in PSP 1K
+            u32 patch_addr, value;
+
+            patch_addr = addr-28;
+            value = *(u32 *)(patch_addr + 4);
+
+            _sw(0x24020001, patch_addr + 4);
+            _sw(value,  patch_addr);
+
+            patches--;
         }
     }
     
-    for (; ; addr++){
+    patches = (se_config->hidemac)? 2:1;
+    for (; addr < top_addr && patches; addr++){
         if (strcmp(addr, "sysconf_plugin_module") == 0){
             p = addr;
-            break;
+            patches--;
+        }
+        else if (se_config->hidemac
+                && ((u8*)addr)[0] == 0x25
+                && ((u8*)addr)[1] == 0
+                && ((u8*)addr)[2] == 0x30
+                && ((u8*)addr)[3] == 0
+                && ((u8*)addr)[4] == 0x32
+                && ((u8*)addr)[5] == 0
+                && ((u8*)addr)[6] == 0x58
+                && ((u8*)addr)[7] == 0 )
+        {
+            static const char* format = " [ FW: %d.%d%d Model: %s ] ";
+            u32 fw = sceKernelDevkitVersion();
+            u32 major = fw>>24;
+            u32 minor = (fw>>16)&0xF;
+            u32 micro = (fw>>8)&0xF;
+            char model[10];
+            if (IS_VITA_ADR(ark_config)){
+                model[0]='v'; model[1]='P'; model[2]='S'; model[3]='P'; model[4]=0;
+            }
+            else{
+                sprintf(model, "%02dg", (int)psp_model+1);
+            }
+            sprintf(str, format, major, minor, micro, model);
+            ascii2utf16(addr, str);
+            patches--;
         }
     }
     
 
     #if ARK_MICRO_VERSION > 0
-    sprintf(str, "ARK %d.%d.%d %s", ARK_MAJOR_VERSION, ARK_MINOR_VERSION, ARK_MICRO_VERSION, ark_config->exploit_id);
+    sprintf(str, "ARK %d.%d.%.2i %s", ARK_MAJOR_VERSION, ARK_MINOR_VERSION, ARK_MICRO_VERSION, ark_config->exploit_id);
     #else
     sprintf(str, "ARK %d.%d %s", ARK_MAJOR_VERSION, ARK_MINOR_VERSION, ark_config->exploit_id);
     #endif
@@ -186,11 +276,10 @@ int fakeParamInexistance(void)
 
 static void patch_game_plugin_module(SceModule2* mod)
 {
-    extern int hidepics;
     u32 text_addr = mod->text_addr;
     u32 top_addr = text_addr + mod->text_size;
     int patches = 5;
-    if (hidepics) patches++;
+    if (se_config->hidepics) patches++;
     for (u32 addr=text_addr; addr<top_addr && patches; addr+=4){
         u32 data = _lw(addr);
         if (data == 0x8FA400A4){
@@ -225,7 +314,7 @@ static void patch_game_plugin_module(SceModule2* mod)
             _sw(0x00001021, addr-24);
             patches--;
         }
-        else if (data == 0x0062A023 && hidepics){
+        else if (data == 0x0062A023 && se_config->hidepics){
             _sw(0x00601021, addr+36);
             _sw(0x00601021, addr+48);
             patches--;
@@ -233,29 +322,22 @@ static void patch_game_plugin_module(SceModule2* mod)
     }
 }
 
-static void patch_msvideo_main_plugin_module(u32 text_addr)
+static void patch_msvideo_main_plugin_module(SceModule2* mod)
 {
-    u32 offsets1[] = {
-        0x0003AF24,
-        0x0003AFAC,
-        0x0003D7EC,
-        0x0003DA48,
-        0x000441A0,
-        0x000745A0,
-        0x00088BF0,
-    };
-    u32 offsets2[] = {
-        0x0003D764,
-        0x0003D7AC,
-        0x00043248,
-    };
-    /* Patch resolution limit to (130560) pixels (480x272) */
-    for (int i=0; i<NELEMS(offsets1); i++){
-        _sh(0xFE00, text_addr + offsets1[i]);
-    }
-    /* Patch bitrate limit (increase to 16384+2) */
-    for (int i=0; i<NELEMS(offsets2); i++){
-        _sh(0x4003, text_addr + offsets2[i]);
+    u32 text_addr = mod->text_addr;
+    u32 top_addr = text_addr + mod->text_size;
+    int patches = 10;
+
+    for (u32 addr=text_addr; addr<top_addr && patches; addr+=4){
+        u32 data = _lw(addr);
+        if ((data && 0xFF00FFFF) == 0x34002C00){
+            _sh(0xFE00, addr);
+            patches--;
+        }
+        else if (data == 0x2C420303 || data == 0x2C420FA1){
+            _sh(0x4003, addr);
+            patches--;
+        }
     }
 }
 
@@ -301,19 +383,32 @@ int umdLoadExecUpdater(char * file, struct SceKernelLoadExecVSHParam * param)
     return ret;
 }
 
+static void do_pspgo_umdvideo_patch(u32 addr){
+    u32 prev = _lw(addr + 4);
+    _sw(prev, addr);
+    _sw(0x24020000 | PSP_4000, addr + 4);
+}
+
 static void patch_vsh_module_for_pspgo_umdvideo(SceModule2 *mod)
 {
-    u32 text_addr = mod->text_addr, prev;
-    u32 offsets[] = {
-        0x0000670C,
-        0x0002068C,
-        0x0002D240,
-    };
-    for(int i=0; i<NELEMS(offsets); i++) {
-        u32 offset = offsets[i];
-        prev = _lw(text_addr + offset + 4);
-        _sw(prev, text_addr + offset);
-        _sw(0x24020000 | PSP_4000, text_addr + offset + 4);
+    if (!has_umd_iso) return;
+    u32 text_addr = mod->text_addr;
+    u32 top_addr = text_addr + mod->text_size;
+    int patches = 3;
+    for (u32 addr=text_addr; addr<top_addr && patches; addr+=4){
+        u32 data = _lw(addr);
+        if (data == 0x38840001){
+            do_pspgo_umdvideo_patch(addr+40);
+            patches--;
+        }
+        else if (data == 0x3C0500FF){
+            do_pspgo_umdvideo_patch(addr-48);
+            patches--;
+        }
+        else if (data == 0x02821007){
+            do_pspgo_umdvideo_patch(addr-56);
+            patches--;
+        }
     }
 }
 
@@ -350,6 +445,10 @@ static void patch_vsh_module(SceModule2 * mod)
             _sw(fakeparam, addr-60);
             patches--;
         }
+        else if (data == 0x2C430004 && psp_model == PSP_GO){
+            // allow PSP Go to use Type 1 Updaters
+			_sw( 0x24030002 , addr - 8 ); //addiu      $v1, $zr, 2
+        }
         
     }
     
@@ -357,7 +456,7 @@ static void patch_vsh_module(SceModule2 * mod)
     hookImportByNID((SceModule *)mod, "sceVshBridge", 0xE533E98C, gameloadexec);
     hookImportByNID((SceModule *)mod, "sceVshBridge", 0x63E69956, umdLoadExec);
     hookImportByNID((SceModule *)mod, "sceVshBridge", 0x81682A40, umdLoadExecUpdater);
-    if(psp_model == PSP_GO && sctrlSEGetBootConfFileIndex() == MODE_VSHUMD) {
+    if(psp_model == PSP_GO && has_umd_iso) {
         patch_vsh_module_for_pspgo_umdvideo(mod);
     }
 }
@@ -401,6 +500,7 @@ static void hook_iso_directory_io(void)
 int vshpatch_init(void)
 {
     previous = sctrlHENSetStartModuleHandler(&vshpatch_module_chain);
+    patch_sceUSB_Driver();
     vpbp_init();
     hook_iso_file_io();
     hook_iso_directory_io();

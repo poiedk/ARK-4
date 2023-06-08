@@ -1,5 +1,6 @@
 #include "common.h"
 #include <ctime>
+#include <sstream>
 #include <dirent.h>
 #include <algorithm>
 #include <unistd.h>
@@ -8,13 +9,18 @@
 #include "systemctrl.h"
 #include "animations.h"
 
-#define CONFIG_PATH "ARKMENU.CFG"
 #define RESOURCES_LOAD_PLACE YA2D_PLACE_VRAM
 
 using namespace common;
 
+extern "C" int kuKernelGetModel();
+
 static ARKConfig ark_config = {0};
 static Image* images[MAX_IMAGES];
+/* Common browser images */
+static Image* checkbox[2];
+static Image* icons[MAX_FILE_TYPES];
+
 static intraFont* font;
 static MP3* sound_mp3;
 static int argc;
@@ -27,6 +33,10 @@ static int currentFont = 0;
 static Anim* animations[ANIM_COUNT];
 
 static bool flipControl = false;
+
+static int psp_model;
+
+static string theme_path = THEME_NAME;
 
 char* fonts[] = {
     "FONT.PGF",
@@ -60,13 +70,6 @@ void setArgs(int ac, char** av){
 void loadConfig(){
     FILE* fp = fopen(CONFIG_PATH, "rb");
     if (fp == NULL){
-        resetConf();
-        return;
-    }
-    fseek(fp, 0, SEEK_END);
-    
-    if (ftell(fp) != sizeof(t_conf)){
-        fclose(fp);
         resetConf();
         return;
     }
@@ -111,6 +114,7 @@ t_conf* common::getConf(){
 }
 
 void common::resetConf(){
+    memset(&config, 0, sizeof(config));
     config.fast_gameboot = 0;
     config.language = 0;
     config.font = 1;
@@ -127,12 +131,14 @@ void common::resetConf(){
     config.text_glow = 1;
     config.screensaver = 2;
     config.redirect_ms0 = 0;
+    config.startbtn = 0;
+    config.menusize = 0;
 }
 
 void common::launchRecovery(){
     struct SceKernelLoadExecVSHParam param;
     char cwd[128];
-    string recovery_path = string(getcwd((char*)cwd, sizeof(cwd))) + "/" + "RECOVERY.PBP";
+    string recovery_path = string(ark_config.arkpath) + "RECOVERY.PBP";
     
     memset(&param, 0, sizeof(param));
     
@@ -167,7 +173,7 @@ static void missingFileHandler(const char* filename){
 
 SceOff common::findPkgOffset(const char* filename, unsigned* size){
     
-    FILE* pkg = fopen(PKG_PATH, "rb");
+    FILE* pkg = fopen(theme_path.c_str(), "rb");
     if (pkg == NULL)
         return 0;
      
@@ -208,7 +214,7 @@ SceOff common::findPkgOffset(const char* filename, unsigned* size){
             return offset;
         }
     }
-    missingFileHandler(PKG_PATH);
+    missingFileHandler(theme_path.c_str());
     return 0;
 }
 
@@ -221,7 +227,7 @@ void* common::readFromPKG(const char* filename, unsigned* size){
 
     unsigned offset = findPkgOffset(filename, size);
     
-    FILE* fp = fopen(PKG_PATH, "rb");
+    FILE* fp = fopen(theme_path.c_str(), "rb");
     
     if (offset == 0 || fp == NULL){
         fclose(fp);
@@ -244,6 +250,10 @@ char** common::getArgv(){
     return argv;
 }
 
+int common::getPspModel(){
+    return psp_model;
+}
+
 bool common::has_suffix(const std::string &str, const std::string &suffix)
 {
     return str.size() >= suffix.size() &&
@@ -261,10 +271,81 @@ u32 common::getMagic(const char* filename, unsigned int offset){
     return magic;
 }
 
+static bool loading_theme = false;
+
+static int loading_theme_thread(SceSize argc, void* argp){
+    float angle = 1.0;
+    while (loading_theme){
+        common::clearScreen(CLEAR_COLOR);
+        images[IMAGE_BG]->draw(0, 0);
+        images[IMAGE_WAITICON]->draw_rotate(
+            (480 - images[IMAGE_WAITICON]->getTexture()->width)/2,
+            (272 - images[IMAGE_WAITICON]->getTexture()->height)/2,
+            angle
+        );
+        angle+=0.2;
+        common::flipScreen();
+    }
+    sceKernelExitDeleteThread(0);
+    return 0;
+}
+
+void common::loadTheme(){
+    images[IMAGE_BG] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("DEFBG.PNG"));
+    images[IMAGE_WAITICON] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("WAIT.PNG"));
+    
+    loading_theme = true;
+    SceUID loading_thread = sceKernelCreateThread("theme_thread", &loading_theme_thread, 0x10, 0x8000, PSP_THREAD_ATTR_USER|PSP_THREAD_ATTR_VFPU, NULL);
+    sceKernelStartThread(loading_thread, 0, NULL);
+
+    
+    images[IMAGE_LOADING] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("LOADING.PNG"));
+    images[IMAGE_SPRITE] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("SPRITE.PNG"));
+    images[IMAGE_NOICON] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("NOICON.PNG"));
+    images[IMAGE_GAME] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("GAME.PNG"));
+    images[IMAGE_FTP] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("FTP.PNG"));
+    images[IMAGE_SETTINGS] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("SETTINGS.PNG"));
+    images[IMAGE_BROWSER] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("BROWSER.PNG"));
+    images[IMAGE_DIALOG] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("BOX.PNG"));
+    images[IMAGE_EXIT] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("EXIT.PNG"));
+    images[IMAGE_PLUGINS] = new Image(theme_path, RESOURCES_LOAD_PLACE, findPkgOffset("PLUGINS.PNG"));
+
+    icons[FOLDER] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("FOLDER.PNG"));
+    icons[FILE_BIN] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("FILE.PNG"));
+    icons[FILE_TXT] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("TXT.PNG"));
+    icons[FILE_PBP] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("PBP.PNG"));
+    icons[FILE_PRX] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("PRX.PNG"));    
+    icons[FILE_ISO] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("ISO.PNG"));
+    icons[FILE_ZIP] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("ZIP.PNG"));
+    icons[FILE_MUSIC] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("MUSIC.PNG"));
+    icons[FILE_PICTURE] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("PICTURE.PNG"));
+
+    checkbox[1] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("CHECK.PNG"));
+    checkbox[0] = new Image(theme_path, YA2D_PLACE_VRAM, common::findPkgOffset("UNCHECK.PNG"));
+    
+    for (int i=0; i<MAX_IMAGES; i++){
+        images[i]->swizzle();
+        images[i]->is_system_image = true;
+    }
+    
+    unsigned mp3_size;
+    void* mp3_buffer = readFromPKG("SOUND.MP3", &mp3_size);
+    sound_mp3 = new MP3(mp3_buffer, mp3_size);
+
+    loading_theme = false;
+    sceKernelWaitThreadEnd(loading_thread, NULL);
+    sceKernelDeleteThread(loading_thread);
+}
+
 void common::loadData(int ac, char** av){
 
     argc = ac;
     argv = av;
+
+    psp_model = kuKernelGetModel();
+
+    sceUtilityLoadModule(PSP_MODULE_AV_AVCODEC);
+    sceUtilityLoadModule(PSP_MODULE_AV_MP3);
     
     animations[0] = new PixelAnim();
     animations[1] = new Waves();
@@ -278,36 +359,7 @@ void common::loadData(int ac, char** av){
     animations[9] = new GoLAnim();
     animations[10] = new NoAnim();
     
-    images[IMAGE_BG] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("DEFBG.PNG"));
-    images[IMAGE_WAITICON] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("WAIT.PNG"));
-    
-    common::clearScreen(CLEAR_COLOR);
-    images[IMAGE_BG]->draw(0, 0);
-    images[IMAGE_WAITICON]->draw(
-        (480 - images[IMAGE_WAITICON]->getTexture()->width)/2,
-        (272 - images[IMAGE_WAITICON]->getTexture()->height)/2
-    );
-    common::flipScreen();
-    
-    images[IMAGE_LOADING] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("LOADING.PNG"));
-    images[IMAGE_SPRITE] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("SPRITE.PNG"));
-    images[IMAGE_NOICON] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("NOICON.PNG"));
-    images[IMAGE_GAME] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("GAME.PNG"));
-    images[IMAGE_FTP] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("FTP.PNG"));
-    images[IMAGE_SETTINGS] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("SETTINGS.PNG"));
-    images[IMAGE_BROWSER] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("BROWSER.PNG"));
-    images[IMAGE_DIALOG] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("BOX.PNG"));
-    images[IMAGE_EXIT] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("EXIT.PNG"));
-    images[IMAGE_PLUGINS] = new Image(PKG_PATH, RESOURCES_LOAD_PLACE, findPkgOffset("PLUGINS.PNG"));
-    
-    for (int i=0; i<MAX_IMAGES; i++){
-        images[i]->swizzle();
-        images[i]->is_system_image = true;
-    }
-    
-    unsigned mp3_size;
-    void* mp3_buffer = readFromPKG("SOUND.MP3", &mp3_size);
-    sound_mp3 = new MP3(mp3_buffer, mp3_size);
+    loadTheme();
     
     loadConfig();
     
@@ -319,11 +371,26 @@ void common::loadData(int ac, char** av){
     
 }
 
-void common::deleteData(){
-    for (int i=0; i<MAX_IMAGES; i++)
+void common::deleteTheme(){
+    for (int i=0; i<MAX_IMAGES; i++){
         delete images[i];
-    intraFontUnload(font);
+    }
+    for (int i=0; i<MAX_FILE_TYPES; i++){
+        delete icons[i];
+    }
+    delete checkbox[0];
+    delete checkbox[1];
     delete sound_mp3;
+}
+
+void common::deleteData(){
+    deleteTheme();
+    intraFontUnload(font);
+}
+
+void common::setThemePath(char* path){
+    if (path == NULL) theme_path = THEME_NAME;
+    else theme_path = path;
 }
 
 bool common::fileExists(const std::string &path){
@@ -339,11 +406,48 @@ bool common::folderExists(const std::string &path){
 long common::fileSize(const std::string &path){
     struct stat stat_buf;
     int rc = stat(path.c_str(), &stat_buf);
-    return rc == 0 ? stat_buf.st_size : -1;
+    return rc == 0 ? stat_buf.st_size : 0;
+}
+
+u64 common::deviceSize(const std::string path){
+    struct DeviceSize {
+        u32 maxClusters;
+        u32 freeClusters;
+        u32 maxSectors;
+        u32 sectorSize;
+        u32 sectorCount;
+    } devsize;
+    void* command = (void*)&devsize;
+    memset(&devsize, 0, sizeof(devsize));
+    string devpath = path.substr(0, path.find(":")+1);
+    sceIoDevctl(devpath.c_str(), 0x02425818, &command, sizeof(command), NULL, 0);
+    return (u64)devsize.freeClusters*(u64)devsize.sectorSize*(u64)devsize.sectorCount;
+}
+
+string common::beautifySize(u64 size){
+    ostringstream txt;
+
+    if (size < 1024)
+        txt<<size<<" Bytes";
+    else if (1024 < size && size < 1048576)
+        txt<<float(size)/1024.f<<" KB";
+    else if (1048576 < size && size < 1073741824)
+        txt<<float(size)/1048576.f<<" MB";
+    else
+        txt<<float(size)/1073741824.f<<" GB";
+    return txt.str();
 }
 
 Image* common::getImage(int which){
     return (which < MAX_IMAGES)? images[which] : images[IMAGE_LOADING];
+}
+
+Image* common::getIcon(int which){
+    return (which < MAX_FILE_TYPES)? icons[which] : images[IMAGE_LOADING];
+}
+
+Image* common::getCheckbox(int which){
+    return checkbox[which&1];
 }
 
 bool common::isSharedImage(Image* img){
@@ -367,7 +471,7 @@ MP3* common::getMP3Sound(){
 }
 
 void common::playMenuSound(){
-    playMP3File(NULL, common::getMP3Sound()->getBuffer(), common::getMP3Sound()->getBufferSize());
+    sound_mp3->play();
 }
 
 void common::printText(float x, float y, const char* text, u32 color, float size, int glow, int scroll){
@@ -400,6 +504,12 @@ void common::printText(float x, float y, const char* text, u32 color, float size
     else
         intraFontPrint(font, x, y, text);
     
+}
+
+int common::calcTextWidth(const char* text, float size){
+    intraFontSetStyle(font, size, 0, 0, 0.f, INTRAFONT_WIDTH_VAR);
+    float w = intraFontMeasureText(font, text) + size*strlen(text);
+    return (int)ceil(w);
 }
 
 void common::clearScreen(u32 color){
@@ -457,10 +567,4 @@ std::string common::getExtension(std::string path){
     std::string ext = path.substr(path.find_last_of(".") + 1);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     return ext;
-}
-
-bool common::canInstallGame(){
-    static char* test_dir = "ms0:/PSP/GAME/ARKTEST/";
-    sceIoMkdir(test_dir, 0777);
-    return (sceIoRmdir(test_dir) >= 0);
 }

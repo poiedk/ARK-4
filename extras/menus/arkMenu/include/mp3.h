@@ -24,9 +24,12 @@ class MP3{
         int file_handle;
         int mp3_handle;
         
-        static int playThread(SceSize _args, void *_argp);
+        static int playThread(SceSize _args, void** _argp);
         
     public:
+
+        void (*on_music_end)(MP3* self);
+
         MP3(void* buffer, int size);
         MP3(char* filename, bool to_buffer=false);
         ~MP3();
@@ -36,6 +39,11 @@ class MP3{
 
         void play();
         void stop();
+        void pauseResume();
+        char* getFilename(){ return filename; };
+        static int isPlaying();
+        static int isPaused();
+        static void fullStop();
 };
 
 #endif

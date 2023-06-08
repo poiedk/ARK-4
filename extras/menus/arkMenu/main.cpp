@@ -9,7 +9,7 @@
 #include "browser.h"
 #include "settingsmenu.h"
 #include "settings_entries.h"
-#include "ftp_mgr.h"
+#include "net_mgr.h"
 #include "ftp_driver.h"
 #include "exit_mgr.h"
 
@@ -30,16 +30,39 @@ int main(int argc, char** argv){
     // setup UMD disc
     sceUmdReplacePermit();
 
+    Controller pad;
+    pad.update(1);
+    bool run_last = pad.LT();
+
     // Load data (theme, config, font, etc)
     common::loadData(argc, argv);
 
-    // initialize FTP client driver for file browser
-    Browser::ftp_driver = new FTPDriver();
+    pad.update(1);
 
-    // Setup System Apps
-    entries[4] = new ExitManager();
-    entries[3] = new SettingsMenu(settings_entries, MAX_SETTINGS_OPTIONS, common::saveConf);
-    entries[2] = new FTPManager();
+    if (run_last || pad.LT()){
+        const char* last_game = common::getConf()->last_game;
+        if (Eboot::isEboot(last_game)){
+            Eboot* eboot = new Eboot(last_game);
+            eboot->execute();
+        }
+        else if (Iso::isISO(last_game)){
+            Iso* iso = new Iso(last_game);
+            iso->execute();
+        }
+    }
+
+    int n_entries = 2;
+
+    // Setup FTP App
+    if (common::getPspModel() != PSP_11000){
+        entries[n_entries++] = new NetworkManager();
+        // initialize FTP client driver for file browser
+        Browser::ftp_driver = new FTPDriver();
+    }
+    // Setup settings and exit
+    SettingsTable stab = { settings_entries, MAX_SETTINGS_OPTIONS };
+    entries[n_entries++] = new SettingsMenu(&stab, common::saveConf, false, true, true);
+    entries[n_entries++] = new ExitManager();
 
     // Setup main App (Game or Browser)
     if (common::getConf()->main_menu == 0){
@@ -53,7 +76,7 @@ int main(int argc, char** argv){
     }
     
     // Initialize Menu
-    SystemMgr::initMenu(entries, MAX_ENTRIES);
+    SystemMgr::initMenu(entries, n_entries);
 
     // Handle control to Menu
     SystemMgr::startMenu();

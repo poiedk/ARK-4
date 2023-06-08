@@ -3,7 +3,7 @@ REBOOTEXDIR = $(ARKROOT)/loader/rebootex
 INCDIR = $(PSPSDK)/include $(ARKROOT)/common/include $(ARKROOT)/kxploit/ $(REBOOTEXDIR)
 TARGET = reboot.bin.gz
 
-PYTHON=$(shell which python2)
+PYTHON=$(shell which python3)
 
 all: $(TARGET)
 
@@ -30,11 +30,13 @@ ifdef DEBUG
 CFLAGS += -DDEBUG=$(DEBUG)
 LIBS += -lcolordebugger
 endif
+crt0.o : $(REBOOTEXDIR)/crt0.S
+	$(CC) -I$(PSPSDK)/include -c $< -o crt0.o
 
 $(REBOOT_OBJS) : %.o : $(REBOOTEXDIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-main.elf: $(C_OBJS) $(REBOOT_OBJS)
+main.elf: crt0.o $(C_OBJS) $(REBOOT_OBJS)
 
 $(TARGET): main.elf
 	$(Q)$(STRIP) -s $<

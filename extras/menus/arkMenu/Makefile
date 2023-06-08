@@ -11,16 +11,17 @@ LDFLAGS =
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = arkMenu
 PSP_EBOOT_ICON = ICON0.PNG
-PSP_FW_VERSION=371
+PSP_FW_VERSION=660
 BUILD_PRX = 1
 
 OBJS = \
 		main.o \
+		imports.o \
 		src/debug.o \
 		src/common.o \
 		src/system_mgr.o \
 		src/gamemgr.o \
-		src/ftp_mgr.o \
+		src/net_mgr.o \
 		src/entry.o \
 		src/iso.o \
 		src/umd.o \
@@ -34,7 +35,10 @@ OBJS = \
 		src/osk.o \
 		src/network.o \
 		src/settingsmenu.o \
-		src/optionsMenu.o \
+		src/optionsmenu.o \
+		src/texteditor.o \
+		src/image_viewer.o \
+		src/music_player.o \
 		src/anim/anim.o \
 		src/anim/pixel.o \
 		src/anim/wave.o \
@@ -79,6 +83,7 @@ LIBS = \
 		-lpsppower \
 		-lpspgum \
 		-lpspgu \
+		-lpsprtc \
 		-lz \
 		-lm \
 		-lpspvram \
@@ -88,6 +93,7 @@ LIBS = \
 		-lpspwlan \
 		-lpspnet \
 		-lpspnet_inet \
+		-lpsphttp \
 		-lpspsystemctrl_user \
 		-lpspkubridge \
 

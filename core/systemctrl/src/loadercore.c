@@ -175,26 +175,6 @@ int KernelCheckExecFile(unsigned char * buffer, int * check)
     return result;
 }
 
-extern void* external_rebootex;
-extern int rebootheap;
-static void loadExternalRebootex(){
-    char path[ARK_PATH_SIZE];
-    strcpy(path, ark_config->arkpath);
-    strcat(path, "REBOOT.BIN");
-    
-    int fd = sceIoOpen(path, PSP_O_RDONLY, 0777);
-    if (fd >= 0){ // read external rebootex
-        // allocate memory
-        int size = sceIoLseek32(fd, 0, PSP_SEEK_END);
-        sceIoLseek32(fd, 0, PSP_SEEK_SET);
-        rebootheap = sceKernelCreateHeap(PSP_MEMORY_PARTITION_KERNEL, size+64, 1, "ExternalRebootex");
-        external_rebootex = (u8*)sceKernelAllocHeapMemory(rebootheap, size);
-        // read rebootex file
-        sceIoRead(fd, external_rebootex, size);
-        sceIoClose(fd);
-    }
-}
-
 static void loadXmbControl(){
     int apitype = sceKernelInitApitype();
     if (apitype == 0x200 || apitype ==  0x210 || apitype ==  0x220 || apitype == 0x300){
@@ -203,7 +183,27 @@ static void loadXmbControl(){
         strcpy(path, ark_config->arkpath);
         strcat(path, XMBCTRL_PRX);
         int modid = sceKernelLoadModule(path, 0, NULL);
-        sceKernelStartModule(modid, 0, NULL, NULL, NULL);
+        if (modid < 0) modid = sceKernelLoadModule("flash0:/kd/ark_xmbctrl.prx", 0, NULL); // retry flash0
+        if (modid >= 0) sceKernelStartModule(modid, 0, NULL, NULL, NULL);
+    }
+}
+
+static void checkArkPath(){
+    int res = sceIoDopen(ark_config->arkpath);
+    if (res < 0){
+        // fix for PSP-Go with dead ef
+        if (ark_config->arkpath[0]=='e' && ark_config->arkpath[1]=='f'){
+            ark_config->arkpath[0] = 'm'; ark_config->arkpath[1] = 's';
+            if ((res=sceIoDopen(ark_config->arkpath))>=0){
+                sceIoDclose(res);
+                return;
+            }
+        }
+        // no ARK install folder, default to SEPLUGINS
+        strcpy(ark_config->arkpath, "ms0:/SEPLUGINS/");
+    }
+    else{
+        sceIoDclose(res);
     }
 }
 
@@ -226,19 +226,27 @@ int InitKernelStartModule(int modid, SceSize argsize, void * argp, int * modstat
     // VSH replacement
     if (strcmp(mod->modname, "vsh_module") == 0){
         if (ark_config->recovery || ark_config->launcher[0]){ // system in recovery or launcher mode
-            if (sctrlSEGetUmdFile()[0] == 0) // don't load launcher if ISO mounted
-                exitLauncher(); // reboot VSH into custom menu
+            exitLauncher(); // reboot VSH into custom menu
         }
+    }
+
+    // load settings before starting mediasync
+    if (!pluginLoaded && strcmp(mod->modname, "sceMediaSync") == 0)
+    {
+        // Check ARK install path
+        checkArkPath();
+        // Check controller input to disable settings and/or plugins
+        checkControllerInput();
+        // load settings
+        loadSettings();
     }
     
     // start module
-    if(result < 0) result = sceKernelStartModule(modid, argsize, argp, modstatus, opt);
+    if (result < 0) result = sceKernelStartModule(modid, argsize, argp, modstatus, opt);
     
     // MediaSync not yet started... too early to load plugins.
-    if(!pluginLoaded && strcmp(mod->modname, "sceMediaSync") == 0)
+    if (!pluginLoaded && strcmp(mod->modname, "sceMediaSync") == 0)
     {
-        // Load external rebootex from savedata folder
-        loadExternalRebootex();
         // Load XMB Control
         loadXmbControl();
         // Load Plugins

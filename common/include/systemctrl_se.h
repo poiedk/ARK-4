@@ -10,15 +10,15 @@ extern "C"{
  * and they are not in HEN 
 */
 
-enum 
+enum fakeregion
 {
     FAKE_REGION_DISABLED = 0,
     FAKE_REGION_JAPAN = 1,
     FAKE_REGION_AMERICA = 2,
     FAKE_REGION_EUROPE = 3,
     FAKE_REGION_KOREA = 4, 
-    FAKE_REGION_UNK = 5,
-    FAKE_REGION_UNK2 = 6,
+    FAKE_REGION_UNITED_KINGDOM = 5,
+    FAKE_REGION_LATIN_AMERICA = 6,
     FAKE_REGION_AUSTRALIA = 7,
     FAKE_REGION_HONGKONG = 8,
     FAKE_REGION_TAIWAN = 9,
@@ -33,10 +33,90 @@ enum SEUmdModes
 {
     MODE_UMD = 0,
     MODE_MARCH33 = 1, // not available anymore, will default to inferno
-    MODE_NP9660 = 2,
+    MODE_NP9660 = 2, // (Galaxy) not available anymore, will default to inferno
     MODE_INFERNO = 3,
     MODE_VSHUMD = 4,
     MODE_UPDATERUMD = 5,
+};
+
+enum swap_xo
+{
+	XO_CURRENT_O_PRIMARY = 0,
+	XO_CURRENT_X_PRIMARY = 1
+};
+
+enum vsh_bg_colors
+{
+	BG_RANDOM		= 0,
+	BG_RED 			= 1,
+	BG_LITE_RED 	= 2,
+	BG_ORANGE 		= 3,
+	BG_LITE_ORANGE 	= 4,
+	BG_YELLOW 		= 5,
+	BG_LITE_YELLOW 	= 6,
+	BG_GREEN 		= 7,
+	BG_LITE_GREEN 	= 8,
+	BG_BLUE 		= 9,
+	BG_LITE_BLUE 	= 10,
+	BG_INDIGO 		= 11,
+	BG_LITE_INDIGO 	= 12,
+	BG_VIOLET 		= 13,
+	BG_LITE_VIOLET 	= 14,
+	BG_PINK 		= 15,
+	BG_LITE_PINK 	= 16,
+	BG_PURPLE 		= 17,
+	BG_LITE_PURPLE 	= 18,
+	BG_TEAL 		= 19,
+	BG_LITE_TEAL 	= 20,
+	BG_AQUA 		= 21,
+	BG_LITE_AQUA 	= 22,
+	BG_GREY 		= 23,
+	BG_LITE_GREY 	= 24,
+	BG_BLACK 		= 25,
+	BG_LITE_BLACK 	= 26,
+	BG_WHITE		= 27,
+	BG_LITE_WHITE	= 28,
+
+};
+
+enum vsh_fg_colors
+{
+	FG_RANDOM		= 0,
+	FG_WHITE 		= 1,
+	FG_ORANGE 		= 2,
+	FG_LITE_ORANGE 	= 3,
+	FG_YELLOW 		= 4,
+	FG_LITE_YELLOW 	= 5,
+	FG_GREEN 		= 6,
+	FG_LITE_GREEN 	= 7,
+	FG_BLUE 		= 8,
+	FG_LITE_BLUE 	= 9,
+	FG_INDIGO 		= 10,
+	FG_LITE_INDIGO 	= 11,
+	FG_VIOLET 		= 12,
+	FG_LITE_VIOLET 	= 13,
+	FG_PINK 		= 14,
+	FG_LITE_PINK 	= 15,
+	FG_PURPLE 		= 16,
+	FG_LITE_PURPLE 	= 17,
+	FG_TEAL 		= 18,
+	FG_LITE_TEAL 	= 19,
+	FG_AQUA 		= 20,
+	FG_LITE_AQUA 	= 21,
+	FG_GREY 		= 22,
+	FG_LITE_GREY 	= 23,
+	FG_BLACK 		= 24,
+	FG_LITE_BLACK 	= 25,
+	FG_LITE_RED 	= 26,
+	FG_RED 			= 27,
+	FG_LITE_WHITE 	= 28,
+};
+
+enum convert_battery
+{
+	NORMAL_TO_PANDORA	= 0,
+	PANDORA_TO_NORMAL	= 1,
+	UNSUPPORTED			= 2,
 };
 
 enum MsSpeedFlag
@@ -57,43 +137,44 @@ enum InfernoCachePolicy
     CACHE_POLICY_RR = 1,
 };
 
+enum umdregion
+{
+    // UMD regions
+    UMD_REGION_DEFAULT  = 0,
+    UMD_REGION_JAPAN    = 1,
+    UMD_REGION_AMERICA  = 2,
+    UMD_REGION_EUROPE   = 3,
+};
+
 typedef struct _SEConfig
 {
-    int magic;
-    s16 umdmode;
-    s16 vshcpuspeed;
-    s16 vshbusspeed;
-    s16 umdisocpuspeed;
-    s16 umdisobusspeed;
-    s16 fakeregion;
-    s16 usbdevice;
-    s16 usbcharge;
-    s16 machidden;
-    s16 skipgameboot;
-    s16 hidepic;
-    s16 plugvsh; 
-    s16 pluggame;
-    s16 plugpop;
-    s16 flashprot;
-    s16 skiplogo;
-    s16 useversion;
-    s16 useownupdate;
-    s16 usenodrm;
-    s16 hibblock;
-    s16 noanalog;
-    s16 oldplugin;
-    s16 htmlviewer_custom_save_location;
-    s16 hide_cfw_dirs;
-    s16 chn_iso;
-    s16 msspeed;
-    s16 slimcolor;
-    s16 iso_cache;
-    s16 iso_cache_total_size; // in MB
-    s16 iso_cache_num;
-    s16 iso_cache_policy;
-    s16 usbversion;
-    s16 language; /* -1 as autodetect */
-    s16 retail_high_memory;
+    u32 magic;
+    u8 language;
+    u8 umdmode;
+    u8 clock;
+    u8 vshregion;
+    u8 umdregion;
+    s8 usbdevice;
+    u8 usbcharge;
+    u8 usbdevice_rdonly;
+    u8 hidemac;
+    u8 hidedlc;
+    u8 skiplogos;
+    u8 hidepics;
+    u8 useownupdate;
+    u8 usenodrm;
+    u8 hibblock;
+    u8 noanalog;
+    u8 oldplugin;
+    u8 hide_cfw_dirs;
+    u8 chn_iso;
+    u8 msspeed;
+    u8 slimcolor;
+    u8 iso_cache;
+    u8 force_high_memory;
+    u8 launcher_mode;
+    u8 disable_pause;
+    u8 noled;
 } SEConfig;
 
 /**
@@ -111,18 +192,18 @@ int sctrlSEGetVersion();
  * Use sctrlSEGetCongiEx function instead.
  *
  * @param config - pointer to a SEConfig structure that receives the SE configuration
- * @returns 0 on success
+ * @returns pointer to original SEConfig structure in SystemControl
 */
-int sctrlSEGetConfig(SEConfig *config);
+SEConfig* sctrlSEGetConfig(SEConfig *config);
 
 /**
  * Gets the SE configuration
  *
  * @param config - pointer to a SEConfig structure that receives the SE configuration
  * @param size - The size of the structure
- * @returns 0 on success
+ * @returns pointer to original SEConfig structure in SystemControl
 */
-int sctrlSEGetConfigEx(SEConfig *config, int size);
+SEConfig* sctrlSEGetConfigEx(SEConfig *config, int size);
 
 /**
  * Sets the SE configuration

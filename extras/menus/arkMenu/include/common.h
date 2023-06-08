@@ -14,6 +14,7 @@
 #include <globals.h>
 #include "gfx.h"
 #include "mp3.h"
+#include "conf.h"
 
 #define THREAD_DELAY 1000
 
@@ -47,45 +48,36 @@ enum images {
     MAX_IMAGES
 };
 
+enum {
+    FOLDER,
+    FILE_BIN,
+    FILE_TXT,
+    FILE_PBP,
+    FILE_PRX,
+    FILE_ISO,
+    FILE_ZIP,
+    FILE_MUSIC,
+    FILE_PICTURE,
+    MAX_FILE_TYPES,
+};
+
+#define SIZE_TINY 0.4f
 #define SIZE_LITTLE 0.51f
 #define SIZE_MEDIUM 0.6f
 #define SIZE_BIG 0.7f
 #define SIZE_HUGE 1.5f
 
-#define PKG_PATH "THEME.ARK"
+#define THEME_NAME "THEME.ARK"
 
 #define MS0_PATH 0x3A30736D // 'ms0:' as u32
 #define EF0_PATH 0x3A306665 // 'ef0:' as u32
-
-
-typedef struct {
-    unsigned char fast_gameboot; // skip pmf/at3 and gameboot animation
-    unsigned char language; // default language for the menu
-    unsigned char font; // default font (either the ones in flash0 or the custom one in THEME.ARK
-    unsigned char plugins; // enable or disable plugins in game
-    unsigned char scan_save; // enable or disable scanning savedata
-    unsigned char scan_cat; // allow scanning for categorized content in /ISO and /PSP/GAME
-    unsigned char scan_dlc; // allow scanning for DLC files (PBOOT.PBP)
-    unsigned char swap_buttons; // whether to swap Cross and Circle
-    unsigned char animation; // the background animation of the menu
-    unsigned char main_menu; // default menu opened at startup (game by default)
-    unsigned char sort_entries; // sort entries by name
-    unsigned char show_recovery; // show recovery menu entry
-    unsigned char show_fps; // show menu FPS
-    unsigned char text_glow; // enable/disable text glowing function
-    unsigned char screensaver; // Screensaver time (or disabled)
-    unsigned char redirect_ms0; // redirect ms0 to ef0
-} t_conf;
-
-extern "C" {
-    void sctrlHENGetArkConfig(ARKConfig* conf);
-};
 
 namespace common{
 
     extern ARKConfig* getArkConfig();
     extern int getArgc();
     extern char** getArgv();
+    extern int getPspModel();
     extern struct tm getDateTime();
     extern bool has_suffix(const std::string &str, const std::string &suffix);
     SceOff findPkgOffset(const char* filename, unsigned* size = NULL);
@@ -93,10 +85,17 @@ namespace common{
     extern u32 getMagic(const char* filename, unsigned int offset);
     extern void loadData(int ac, char** av);
     extern void deleteData();
+    extern void loadTheme();
+    extern void deleteTheme();
+    extern void setThemePath(char* path = NULL);
     extern bool fileExists(const std::string &path);
     extern bool folderExists(const std::string &path);
     extern long fileSize(const std::string &path);
+    extern u64 deviceSize(const std::string path);
+    extern string beautifySize(u64 size);
     extern Image* getImage(int which);
+    extern Image* getIcon(int which);
+    extern Image* getCheckbox(int which);
     extern bool isSharedImage(Image* img);
     extern intraFont* getFont();
     extern MP3* getMP3Sound();
@@ -105,6 +104,7 @@ namespace common{
     extern void resetConf();
     extern void playMenuSound();
     extern void printText(float x, float y, const char *text, u32 color=GRAY_COLOR, float size=SIZE_LITTLE, int glow=0, int scroll=0);
+    extern int calcTextWidth(const char* text, float size=SIZE_LITTLE);
     extern void clearScreen(u32 color = CLEAR_COLOR);
     extern void drawBorder();
     extern void drawScreen();
@@ -114,7 +114,6 @@ namespace common{
     extern int maxString(string* strings, int n_strings);
     extern std::string getExtension(std::string path);
     extern void launchRecovery();
-    extern bool canInstallGame();
 }
 
 #endif

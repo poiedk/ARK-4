@@ -10,7 +10,6 @@ Menu::Menu(EntryType t){
     this->index = 0;
     this->threadIndex = 0;
     this->animating = 0;
-    this->fastScroll = 1;
     this->fastScrolling = false;
     this->animDelay = true;
     this->animState = 0.f;
@@ -105,14 +104,18 @@ void Menu::draw(bool selected){
     int yoffset = 20;
     int curentry_yoffset = 0;
 
+    // draw scrollbar
     if (selected && fastScrolling){
         int height = 240/entries->size();
         int x = xoffset-7;
         int y = yoffset+10;
-        common::getImage(IMAGE_DIALOG)->draw_scale(x+2, y, 1, height*entries->size());
-        common::getImage(IMAGE_DIALOG)->draw_scale(x, y + index*height, 5, height);
+        ya2d_draw_rect(x+2, y, 3, height*entries->size(), DARKGRAY, 1);
+        ya2d_draw_rect(x+1, y + index*height, 5, height, DARKGRAY, 1);
+        ya2d_draw_rect(x+3, y, 1, height*entries->size(), LITEGRAY, 1);
+        ya2d_draw_rect(x+2, y + index*height, 3, height, LITEGRAY, 1);
     }
     
+    // draw icon, calculating whatever for animation
     float anim = 0.0f;
     if (animState >= 1.0f){
         if (animating == -1){
@@ -170,32 +173,34 @@ void Menu::draw(bool selected){
             continue;
         }
         else{
-        
+            Image* e_icon = getEntry(i)->getIcon();
             if (animating == 1 && i == this->index-1 && !fastScrolling){
-                getEntry(i)->getIcon()->draw_scale(xoffset+2, yoffset+anim*40, 0.75f, 0.75f);
+                e_icon->draw_scale(xoffset+2, yoffset+anim*40, 0.75f, 0.75f);
                 yoffset += 60;
             }
             else if (animating == -1 && i == this->index+1 && !fastScrolling){
-                getEntry(i)->getIcon()->draw_scale(xoffset+2, yoffset+anim*40, 0.75f, 0.75f);
+                e_icon->draw_scale(xoffset+2, yoffset+anim*40, 0.75f, 0.75f);
                 yoffset += 60;
             }
             else{
-                getEntry(i)->getIcon()->draw_scale(xoffset, yoffset+anim*40, 0.5f, 0.5f);
+                e_icon->draw_scale(xoffset, yoffset+anim*40, 0.5f, 0.5f);
                 yoffset += 40;
             }
         }
     }
 
     if (selected){
-        int height = getEntry(this->index)->getIcon()->getTexture()->height;
+        Image* e_icon = getEntry(this->index)->getIcon();
+        int height = e_icon->getTexture()->height;
         if (height != 80)
             curentry_yoffset = (272-height)/2;
         
         if (animating){
-            getEntry(this->index)->getIcon()->draw_scale(xoffset+2, curentry_yoffset+5+anim*40, 0.75f, 0.75f);
+            e_icon->draw_scale(xoffset+2, curentry_yoffset+5+anim*40, 0.75f, 0.75f);
         }
         else {
-            getEntry(this->index)->getIcon()->draw(xoffset+5, curentry_yoffset+5+anim*40);
+            common::printText(xoffset, curentry_yoffset+(height/2), "...", WHITE_COLOR, 10.f, 1);
+            e_icon->draw(xoffset+5, curentry_yoffset+5+anim*40);
         }   
     }
 }
@@ -250,15 +255,15 @@ vector<Entry*>* Menu::getVector(){
 void Menu::moveUp(){
     if (animating || fastScrolling){
         fastScrolling = true;
-        this->index -= fastScroll;
-        fastScroll++;
         if (this->index <= 0){
             animating = 0;
             this->index = 0;
             this->stopFastScroll();
         }
-        else
+        else{
+            this->index--;
             common::playMenuSound();
+        }
     }
     else if (this->index > 0){
         common::playMenuSound();
@@ -272,15 +277,15 @@ void Menu::moveUp(){
 void Menu::moveDown(){
     if (animating || fastScrolling){
         fastScrolling = true;
-        this->index += fastScroll;
-        fastScroll++;
         if (this->index >= this->getVectorSize()-1){
             animating = 0;
             this->index = this->getVectorSize()-1;
             this->stopFastScroll();
         }
-        else
+        else{
             common::playMenuSound();
+            this->index++;
+        }
     }
     else if (this->index < this->getVectorSize()-1){
         common::playMenuSound();
@@ -293,6 +298,5 @@ void Menu::moveDown(){
 
 void Menu::stopFastScroll(){
     fastScrolling = false;
-    fastScroll = 1;
     animDelay = false;
 }

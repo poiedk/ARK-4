@@ -10,12 +10,13 @@
 #include "macros.h"
 #include "exitgame.h"
 #include "popspatch.h"
-#include "vitamem.h"
 #include "libs/graphics/graphics.h"
 
 extern STMOD_HANDLER previous;
 
 extern void exitLauncher();
+
+extern SEConfig* se_config;
 
 KernelFunctions _ktbl = { // for vita flash patcher
     .KernelDcacheInvalidateRange = &sceKernelDcacheInvalidateRange,
@@ -107,24 +108,6 @@ int isSystemBooted(void)
     return 0;
 }
 
-int use_mscache = 0;
-int use_highmem = 0;
-int use_infernocache = 0;
-void settingsHandler(char* path){
-    int apitype = sceKernelInitApitype();
-    if (strcasecmp(path, "highmem") == 0){
-        use_highmem = 1;
-    }
-    else if (strcasecmp(path, "mscache") == 0){
-        use_mscache = 1; // enable ms cache for speedup
-    }
-    else if (strcasecmp(path, "infernocache") == 0){
-        if (apitype == 0x123 || apitype == 0x125 || (apitype >= 0x112 && apitype <= 0x115)){
-            use_infernocache = 1;
-        }
-    }
-}
-
 int (*_sceKernelVolatileMemTryLock)(int unk, void **ptr, int *size);
 int sceKernelVolatileMemTryLockPatched(int unk, void **ptr, int *size) {
 	int res = 0;
@@ -159,9 +142,9 @@ void ARKVitaOnModuleStart(SceModule2 * mod){
     // Patch sceKernelExitGame Syscalls
     if(strcmp(mod->modname, "sceLoadExec") == 0)
     {
-        sctrlHENPatchSyscall((void*)sctrlHENFindFunction(mod->modname, "LoadExecForUser", 0x05572A5F), K_EXTRACT_IMPORT(exitLauncher));
-        sctrlHENPatchSyscall((void*)sctrlHENFindFunction(mod->modname, "LoadExecForUser", 0x2AC9954B), K_EXTRACT_IMPORT(exitLauncher));
-        sctrlHENPatchSyscall((void*)sctrlHENFindFunction(mod->modname, "LoadExecForUser", 0x08F7166C), K_EXTRACT_IMPORT(exitLauncher));
+        REDIRECT_FUNCTION(sctrlHENFindFunction(mod->modname, "LoadExecForUser", 0x05572A5F), K_EXTRACT_IMPORT(exitLauncher));
+        REDIRECT_FUNCTION(sctrlHENFindFunction(mod->modname, "LoadExecForUser", 0x2AC9954B), K_EXTRACT_IMPORT(exitLauncher));
+        REDIRECT_FUNCTION(sctrlHENFindFunction(mod->modname, "LoadExecForKernel", 0x08F7166C), K_EXTRACT_IMPORT(exitLauncher));
         goto flush;
     }
     
@@ -188,17 +171,16 @@ void ARKVitaOnModuleStart(SceModule2 * mod){
         goto flush;
     }
     */
-    
-    // load and process settings file
+
     if(strcmp(mod->modname, "sceMediaSync") == 0)
     {
-        loadSettings(&settingsHandler);
-        goto flush;
-    }
-    
-    if (strcmp(mod->modname, "Legacy_Software_Loader") == 0){
-        // Remove patch of sceKernelGetUserLevel on sceLFatFs_Driver
-        _sw(NOP, mod->text_addr + 0x1140);
+		// enable inferno cache
+		if (se_config->iso_cache){
+			int (*CacheInit)(int, int, int) = sctrlHENFindFunction("PRO_Inferno_Driver", "inferno_driver", 0x8CDE7F95);
+			if (CacheInit){
+				CacheInit(32 * 1024, 64, 11); // 4MB cache for PS Vita standalone
+			}
+        }
         goto flush;
     }
 
@@ -218,17 +200,7 @@ void ARKVitaOnModuleStart(SceModule2 * mod){
         if(isSystemBooted())
         {
             // Initialize Memory Stick Speedup Cache
-            if (use_mscache) msstorCacheInit("ms", 8 * 1024);
-
-            // apply extra memory patch
-            if (use_highmem) unlockVitaMemory();
-
-            if (use_infernocache){
-                int (*CacheInit)(int, int, int) = sctrlHENFindFunction("PRO_Inferno_Driver", "inferno_driver", 0x8CDE7F95);
-                if (CacheInit){
-                    CacheInit(32 * 1024, 32, 11); // 2MB cache for PS Vita
-                }
-            }
+            if (se_config->msspeed) msstorCacheInit("ms", 8 * 1024);
             
             // Apply Directory IO PSP Emulation
             patchFileSystemDirSyscall();

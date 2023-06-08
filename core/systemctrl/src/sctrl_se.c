@@ -54,12 +54,12 @@ void sctrlSEApplyConfig(SEConfig *config) __attribute__((alias("sctrlSESetConfig
  * Use sctrlSEGetCongiEx function instead.
  *
  * @param config - pointer to a SEConfig structure that receives the SE configuration
- * @returns 0 on success
+ * @returns pointer to original SEConfig structure in SystemControl
 */
-int sctrlSEGetConfig(SEConfig *config)
+SEConfig* sctrlSEGetConfig(SEConfig *config)
 {
-    memcpy(config, &se_config, sizeof(SEConfig));
-    return 0;
+    if (config) memcpy(config, &se_config, sizeof(SEConfig));
+    return &se_config;
 }
 
 /**
@@ -67,12 +67,12 @@ int sctrlSEGetConfig(SEConfig *config)
  *
  * @param config - pointer to a SEConfig structure that receives the SE configuration
  * @param size - The size of the structure
- * @returns 0 on success
+ * @returns pointer to original SEConfig structure in SystemControl
 */
-int sctrlSEGetConfigEx(SEConfig *config, int size)
+SEConfig* sctrlSEGetConfigEx(SEConfig *config, int size)
 {
-    memcpy(config, &se_config, size);
-    return 0;
+    if (config && size) memcpy(config, &se_config, size);
+    return &se_config;
 }
 
 /**
@@ -119,10 +119,15 @@ char *sctrlSEGetUmdFileEx(char *input)
 // Set Reboot Configuration UMD File
 void sctrlSESetUmdFile(char * file)
 {
-    // Overwrite Reboot Configuration UMD File
-    strncpy(rebootex_config.iso_path, file, REBOOTEX_CONFIG_ISO_PATH_MAXSIZE - 1);
-    // Terminate String
-    rebootex_config.iso_path[REBOOTEX_CONFIG_ISO_PATH_MAXSIZE - 1] = 0;
+    if (file == NULL || file[0] == 0){
+        rebootex_config.iso_path[0] = 0;
+    }
+    else {
+        // Overwrite Reboot Configuration UMD File
+        strncpy(rebootex_config.iso_path, file, REBOOTEX_CONFIG_ISO_PATH_MAXSIZE - 1);
+        // Terminate String
+        rebootex_config.iso_path[REBOOTEX_CONFIG_ISO_PATH_MAXSIZE - 1] = 0;
+    }
 }
 
 void sctrlSESetUmdFileEx(const char *umd, char *input)

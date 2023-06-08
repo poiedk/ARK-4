@@ -7,11 +7,11 @@
 #include <pspdisplay_kernel.h>
 #include <pspsysmem_kernel.h>
 #include <systemctrl.h>
+#include <systemctrl_se.h>
 #include <systemctrl_private.h>
 #include <pspiofilemgr.h>
 #include <pspgu.h>
 #include <functions.h>
-#include "high_mem.h"
 #include "exitgame.h"
 #include "libs/graphics/graphics.h"
 
@@ -24,10 +24,9 @@ STMOD_HANDLER previous = NULL;
 
 // for some model specific patches
 u32 psp_model = 0;
-u32 psp_fw_version = 0;
 
-static ARKConfig _ark_conf;
-ARKConfig* ark_config = &_ark_conf;
+ARKConfig* ark_config = NULL;
+SEConfig* se_config = NULL;
 
 extern void (*prevPluginHandler)(const char* path, int modid);
 extern void pluginHandler(const char* path, int modid);
@@ -45,12 +44,12 @@ void flushCache()
     sceKernelDcacheWritebackInvalidateAll();
 }
 
-void processArkConfig(ARKConfig* ark_config){
-    sctrlHENGetArkConfig(ark_config);
+void processArkConfig(){
+    se_config = sctrlSEGetConfig(NULL);
+    ark_config = sctrlHENGetArkConfig(NULL);
     if (ark_config->exec_mode == DEV_UNK){
         ark_config->exec_mode = PSP_ORIG; // assume running on PSP
     }
-    sctrlHENSetArkConfig(ark_config); // notify SystemControl
 }
 
 // Boot Time Entry Point
@@ -58,15 +57,12 @@ int module_start(SceSize args, void * argp)
 {
     // set rebootex for PSP
     sctrlHENSetRebootexOverride(rebootbuffer_psp);
-
-    // get firmware version
-    psp_fw_version = sceKernelDevkitVersion();
     
     // get psp model
     psp_model = sceKernelGetModel();
     
     // get ark config
-    processArkConfig(ark_config);
+    processArkConfig();
 
     // Register Module Start Handler
     previous = sctrlHENSetStartModuleHandler(PSPOnModuleStart);

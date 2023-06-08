@@ -5,6 +5,7 @@
 #include "gfx.h"
 
 #define EBOOT_MAGIC 0x50425000
+#define ELF_MAGIC 0x464C457F
 
 #define PS1_CAT 0x454D
 #define PSN_CAT 0x4745
@@ -48,7 +49,6 @@ class Eboot : public Entry{
         void readHeader();
         
         void readFile(void* dst, unsigned offset, unsigned size);
-        void extractFile(const char * name, unsigned block, unsigned size);
         
     public:
     
@@ -60,6 +60,7 @@ class Eboot : public Entry{
         void loadIcon();
         void getTempData1();
         void getTempData2();
+        SfoInfo getSfoInfo();
         
         void doExecute();
         

@@ -2,13 +2,13 @@ TARGET = ARKRECOVERY
 CFLAGS = -O3 -G0 -Wall -Wno-unused -Wno-write-strings -Wno-sign-compare
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
 ASFLAGS = $(CFLAGS)
-INCDIR = ../arkMenu/include ../arkMenu/include/anim $(ARKROOT)/libs/libya2d $(ARKROOT)/libs/libintraFont $(ARKROOT)/libs/libjpeg $(ARKROOT)/common/include
+INCDIR = ./include ../arkMenu/include ../arkMenu/include/anim $(ARKROOT)/libs/libya2d $(ARKROOT)/libs/libintraFont $(ARKROOT)/libs/libjpeg $(ARKROOT)/common/include
 LIBDIR = $(ARKROOT)/libs
 LDFLAGS =
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = ARK Recovery
 PSP_EBOOT_ICON = ../arkMenu/ICON0.PNG
-PSP_FW_VERSION=371
+PSP_FW_VERSION=660
 BUILD_PRX = 1
 
 OBJS = \
@@ -26,7 +26,10 @@ OBJS = \
 		../arkMenu/src/browser.o \
 		../arkMenu/src/browser_entries.o \
 		../arkMenu/src/settingsmenu.o \
-		../arkMenu/src/optionsMenu.o \
+		../arkMenu/src/optionsmenu.o \
+		../arkMenu/src/texteditor.o \
+		../arkMenu/src/image_viewer.o \
+		../arkMenu/src/music_player.o \
 		../arkMenu/src/anim/anim.o \
 		../arkMenu/src/anim/pixel.o \
 		../arkMenu/src/anim/wave.o \
@@ -53,11 +56,13 @@ LIBS = \
 		-lpsppower \
 		-lpspgum \
 		-lpspgu \
+		-lpsprtc \
 		-lz \
 		-lm \
 		-lpspvram \
 		-lpspmath \
 		-lpspmp3 \
+		-lpspumd \
 		-lpspsystemctrl_user \
 		-lpspkubridge \
 

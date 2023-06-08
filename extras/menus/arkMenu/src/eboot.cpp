@@ -31,7 +31,7 @@ void Eboot::readHeader(){
 void Eboot::loadIcon(){
     Image* icon = NULL;
     if (this->header->icon1_offset-this->header->icon0_offset)
-        icon = new Image(this->path.c_str(), YA2D_PLACE_RAM, this->header->icon0_offset);
+        icon = new Image(this->path, YA2D_PLACE_RAM, this->header->icon0_offset);
     
     if (icon == NULL)
         sceKernelDelayThread(50000);
@@ -53,12 +53,12 @@ void Eboot::getTempData1(){
     // grab pic0.png
     size = this->header->pic1_offset-this->header->pic0_offset;
     if (size)
-        this->pic0 = new Image(this->path.c_str(), YA2D_PLACE_RAM, this->header->pic0_offset);
+        this->pic0 = new Image(this->path, YA2D_PLACE_RAM, this->header->pic0_offset);
 
     // grab pic1.png
     size = this->header->snd0_offset-this->header->pic1_offset;
     if (size)
-        this->pic1 = new Image(this->path.c_str(), YA2D_PLACE_RAM, this->header->pic1_offset);
+        this->pic1 = new Image(this->path, YA2D_PLACE_RAM, this->header->pic1_offset);
 
 }
 
@@ -96,29 +96,6 @@ void Eboot::readFile(void* dst, unsigned offset, unsigned size){
     fread(dst, size, 1, src);
     fclose(src);
 }
-
-void Eboot :: extractFile(const char * name, unsigned block, unsigned size)
-{
-    FILE * b;
-    FILE* src;
-    b = fopen(name, "wb");
-    src = fopen(this->path.c_str(), "rb");
-    fseek(src, block, SEEK_SET);
-    
-    void* data = malloc(min(size, (unsigned)512));
-    
-    while (size){
-        int toRead = 512;
-        if (size < 512)
-            toRead = size;
-        fread(data, toRead, 1, src);
-        fwrite(data, toRead, 1, b);
-        size -= toRead;
-    }        
-    
-    fclose(src);
-    fclose(b);
-};
 
 int Eboot::getEbootType(const char* path){
 
@@ -173,9 +150,12 @@ int Eboot::getEbootType(const char* path){
 
 string Eboot::fullEbootPath(string path, string app){
     // Return the full path of a homebrew given only the homebrew name
-    if (common::fileExists(app))
+    if (common::fileExists(app)){
         return app; // it's already a full path
-
+    }
+    else if (common::fileExists(path+app+"%/EBOOT.PBP")){
+        return path+app+"%/EBOOT.PBP"; // 1.50 homebrew
+    }
 	else if (common::getConf()->scan_dlc && common::fileExists(path+app+"/PBOOT.PBP"))
 		return path+app+"/PBOOT.PBP"; // DLC
 
@@ -210,8 +190,28 @@ char* Eboot::getSubtype(){
     return this->subtype;
 }
 
+SfoInfo Eboot::getSfoInfo(){
+    SfoInfo info = this->Entry::getSfoInfo();
+    // grab PARAM.SFO
+    u32 size = this->header->icon0_offset-this->header->param_offset;
+    if (size){
+
+        unsigned char* sfo_buffer = (unsigned char*)malloc(size);
+        this->readFile(sfo_buffer, this->header->param_offset, size);
+
+        int title_size = sizeof(info.title);
+        Entry::getSfoParam(sfo_buffer, size, "TITLE", (unsigned char*)(info.title), &title_size);
+        
+        int id_size = sizeof(info.gameid);
+        Entry::getSfoParam(sfo_buffer, size, "DISC_ID", (unsigned char*)(info.gameid), &id_size);
+
+        free(sfo_buffer);
+    }
+    return info;
+}
+
 bool Eboot::isEboot(const char* path){
-    return (common::getMagic(path, 0) == EBOOT_MAGIC);
+    return (common::getExtension(path) == "pbp" || common::getMagic(path, 0) == EBOOT_MAGIC);
 }
 
 void Eboot::doExecute(){
@@ -255,6 +255,13 @@ void Eboot::executeHomebrew(const char* path){
     param.args = strlen(path) + 1;
     param.argp = (char*)path;
     param.key = "game";
+
+    // fix 1.50 homebrew
+    char *perc = strchr(path, '%');
+    if (perc) {
+        strcpy(perc, perc + 1);
+    }
+
     sctrlKernelLoadExecVSHWithApitype(runlevel, path, &param);
 }
 
@@ -263,7 +270,7 @@ void Eboot::executePSN(const char* path){
     
     memset(&param, 0, sizeof(param));
     
-    int runlevel = (*(u32*)path == EF0_PATH && common::getConf()->redirect_ms0)? ISO_RUNLEVEL_GO : ISO_RUNLEVEL;
+    int runlevel = (*(u32*)path == EF0_PATH)? ISO_RUNLEVEL_GO : ISO_RUNLEVEL; // PSN games must always be redirected
 
     param.args = 33;  // lenght of "disc0:/PSP_GAME/SYSDIR/EBOOT.BIN" + 1
     param.argp = (char*)"disc0:/PSP_GAME/SYSDIR/EBOOT.BIN";
@@ -287,6 +294,10 @@ void Eboot::executePOPS(const char* path){
 }
 
 void Eboot::executeEboot(const char* path){
+    if (common::getMagic(path, 0) == ELF_MAGIC){ // plain ELF (1.50) homebrew
+        Eboot::executeHomebrew(path);
+        return;
+    }
     switch (Eboot::getEbootType(path)){
     case TYPE_HOMEBREW:    Eboot::executeHomebrew(path);    break;
     case TYPE_PSN:         Eboot::executePSN(path);         break;

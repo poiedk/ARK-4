@@ -21,6 +21,7 @@
 #include <psputilsforkernel.h>
 #include <pspsysevent.h>
 #include <pspiofilemgr.h>
+#include <systemctrl_se.h>
 #include <stdio.h>
 #include <string.h>
 #include "globals.h"
@@ -29,6 +30,8 @@
 #include "region_free.h"
 
 extern ARKConfig* ark_config;
+extern SEConfig* se_config;
+extern int psp_model;
 
 enum
 {
@@ -62,38 +65,15 @@ enum
 	UNKNOWN
 };
 
-int region_change = 0;
-
-int count = 0;
-int key_start = 0;
-
-static int (*IdStorageLookup)(u16 key, u32 offset, void *buf, u32 len);
+// umdman.prx key buffer
 static void* umd_buf = NULL;
 
-static int _sceChkregGetPsCode(u8 *pscode)
-{
-	pscode[0] = 1;
-	pscode[1] = 0;
-	pscode[2] = REGION_DEBUG_CODE;
-	pscode[3] = 0;
-	pscode[4] = 1;
-	pscode[5] = 0;
-	pscode[6] = 1;
-	pscode[7] = 0;
-
-	return 0;
-}
-
-static int fakeIdStorageLookupForUmd(u16 key, u32 offset, void *buf, u32 len){
-    if (offset == 0 && len==512){ // obtain buffer where UMD keys are stored in umdman.prx
-        if (umd_buf == NULL){
-			umd_buf = buf;
-			key_start = key-0x100; // should be 2
-		}
-		count++; // should end up being 5
-	}
-    return IdStorageLookup(key, offset, buf, len); // passthrough
-}
+static int regions[] = {
+	0, // default
+	3, // Japan
+    4, // America
+    5, // Europe
+};
 
 int GetHardwareInfo(u32 *ptachyon, u32 *pbaryon, u32 *ppommel, u32 *pmb, u64 *pfuseid)
 {
@@ -221,15 +201,18 @@ int GetHardwareInfo(u32 *ptachyon, u32 *pbaryon, u32 *ppommel, u32 *pmb, u64 *pf
     return 0;
 }
 
-int replace_umd_keys(){
+// generate new UMD keys using idsRegeneration and inject into umdman
+int sctrlArkReplaceUmdKeys(){
+
+	if (psp_model == PSP_GO) return 0;
 
     int res = -1;
 
     // allocate memory buffer
     SceUID memid = sceKernelAllocPartitionMemory(2, "idsBuffer", PSP_SMEM_High, 512*0x20, NULL);
-    void* big_buffer = sceKernelGetBlockHeadAddr(memid);
+    if (memid < 0) goto fake_ids_end;
 
-    if (memid < 0 || big_buffer == NULL) goto fake_ids_end;
+	void* big_buffer = sceKernelGetBlockHeadAddr(memid);
 
     // load and start idsRegeneration module
     char path[ARK_PATH_SIZE];
@@ -237,11 +220,9 @@ int replace_umd_keys(){
     strcat(path, "IDSREG.PRX");
 
     SceUID modid = sceKernelLoadModule(path, 0, NULL);
-
-    if (modid < 0) goto fake_ids_end;
-
-    res = sceKernelStartModule(modid, strlen(path) + 1, path, NULL, NULL);
-    if (res < 0) goto fake_ids_end;
+	if (modid < 0) modid = sceKernelLoadModule("flash0:/kd/ark_idsreg.prx", 0, NULL); // retry flash0
+	if (modid >= 0)
+	    res = sceKernelStartModule(modid, strlen(path) + 1, path, NULL, NULL);
 
     // find idsRegeneration exports
     int (*idsRegenerationSetup)(u32, u32, u32, u32, u64, u32, void*) = 
@@ -262,7 +243,7 @@ int replace_umd_keys(){
     if (res < 0) goto fake_ids_end;
 
 	// initialize idsRegeneration with hardware info and new region
-    res = idsRegenerationSetup(tachyon, baryon, pommel, mb, fuseid, region_change, NULL);
+    res = idsRegenerationSetup(tachyon, baryon, pommel, mb, fuseid, regions[se_config->umdregion], NULL);
 	if (res < 0) goto fake_ids_end;
 
 	// calculate the new UMD keys
@@ -270,7 +251,7 @@ int replace_umd_keys(){
 	if (res < 0) goto fake_ids_end;
 
     // copy the generated UMD keys to the buffer in umdman
-    memcpy(umd_buf, big_buffer+(512*key_start), 512*count);
+    memcpy(umd_buf, big_buffer+(512*2), 512*5);
     flushCache();
 
 	res = 0;
@@ -278,37 +259,80 @@ int replace_umd_keys(){
     // free resources
     fake_ids_end:
     sceKernelFreePartitionMemory(memid);
-    sceKernelStopModule(modid, 0, NULL, NULL, NULL);
-    sceKernelUnloadModule(modid);
     return res;
+}
+
+static int (*_idStorageLookup)(u16 key, u32 offset, void *buf, u32 len);
+static int fakeIdStorageLookupForUmd(u16 key, u32 offset, void *buf, u32 len){
+	// obtain buffer where UMD keys are stored in umdman.prx
+    if (offset == 0 && key == 0x102){
+		umd_buf = buf;
+	}
+    return _idStorageLookup(key, offset, buf, len); // passthrough
 }
 
 void patch_umd_idslookup(SceModule2* mod){
     // this patch allows us to obtain the buffer where umdman stores the UMD keys
-    IdStorageLookup = sctrlHENFindFunction("sceIdStorage_Service", "sceIdStorage_driver", 0x6FE062D1);
-    if (mod){
-        hookImportByNID(mod, "sceIdStorage_driver", 0x6FE062D1, &fakeIdStorageLookupForUmd);
-    }
+    _idStorageLookup = sctrlHENFindFunction("sceIdStorage_Service", "sceIdStorage_driver", 0x6FE062D1);
+    hookImportByNID(mod, "sceIdStorage_driver", 0x6FE062D1, &fakeIdStorageLookupForUmd);
 }
 
-void patch_region(void)
-{
-	// sceChkregGetPsCode
-	u32 fp = sctrlHENFindFunction("sceChkreg", "sceChkreg_driver", 0x59F8491D); 
-	if (fp) {
-        _sw(JUMP(_sceChkregGetPsCode), fp);
-        _sw(NOP, fp+4);
-    }
-
-}
-
-void patch_vsh_main_region(SceModule2* mod){
+void patch_vsh_region_check(SceModule2* mod){
+	// patch to remove region check in VSH
 	hookImportByNID(mod, "sceVshBridge", 0x5C2983C2, 1);
 }
 
 int patch_umd_thread(SceSize args, void *argp){
     sceKernelDelayThread(1000000); // wait for system to load
-    replace_umd_keys(); // replace UMD keys
+    sctrlArkReplaceUmdKeys(); // replace UMD keys
     sceKernelExitDeleteThread(0);
     return 0;
+}
+
+static u8 get_pscode_from_region(int region)
+{
+	u8 code;
+
+	code = region;
+	
+	if(code < 12) {
+		code += 2;
+	} else {
+		code -= 11;
+	}
+
+	if(code == 2) {
+		code = 3;
+	}
+
+	printk("%s: region %d code %d\n", __func__, region, code);
+
+	return code;
+}
+
+static int _sceChkregGetPsCode(u8 *pscode)
+{
+	pscode[0] = 1;
+	pscode[1] = 0;
+	pscode[2] = get_pscode_from_region(se_config->vshregion);
+	pscode[3] = 0;
+	pscode[4] = 1;
+	pscode[5] = 0;
+	pscode[6] = 1;
+	pscode[7] = 0;
+
+	return 0;
+}
+
+void patch_sceChkreg(void)
+{
+	u32 fp;
+   
+	// sceChkregGetPsCode
+	fp = sctrlHENFindFunction("sceChkreg", "sceChkreg_driver", 0x59F8491D); 
+
+	if (fp) {
+		_sw(JUMP(_sceChkregGetPsCode), fp);
+        _sw(NOP, fp+4);
+	}
 }

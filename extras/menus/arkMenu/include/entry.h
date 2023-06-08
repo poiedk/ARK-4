@@ -19,6 +19,8 @@
 #define HOMEBREW_RUNLEVEL_GO 0x152
 #define ISO_RUNLEVEL 0x123
 #define ISO_RUNLEVEL_GO 0x125
+#define ISO_PBOOT_RUNLEVEL 0x124
+#define ISO_PBOOT_RUNLEVEL_GO 0x126
 #define POPS_RUNLEVEL 0x144
 #define POPS_RUNLEVEL_GO 0x155
 #define RECOVERY_RUNLEVEL 0x141
@@ -28,6 +30,29 @@
 #define RAR_MAGIC 0x21726152
 
 int loadIconThread(SceSize _args, void *_argp);
+
+typedef struct  __attribute__((packed)) {
+	u32 signature;
+	u32 version;
+	u32 fields_table_offs;
+	u32 values_table_offs;
+	int nitems;
+} SFOHeader;
+
+typedef struct __attribute__((packed)) {
+	u16 field_offs;
+	u8  unk;
+	u8  type; // 0x2 -> string, 0x4 -> number
+	u32 unk2;
+	u32 unk3;
+	u16 val_offs;
+	u16 unk4;
+} SFODir;
+
+typedef struct SfoInfo {
+    char title[128];
+    char gameid[10];
+}SfoInfo;
 
 class Entry{
 
@@ -47,8 +72,6 @@ class Entry{
         
         int icon1_size;
         int at3_size;
-
-        //virtual void extractFile(const char * name, unsigned block, unsigned size)=0;
         
         virtual void doExecute()=0;
                 
@@ -60,6 +83,7 @@ class Entry{
         string getName();
         void setName(string name);
         string getPath();
+        void setPath(string path);
         
         Image* getIcon();
         void* getIcon1();
@@ -70,6 +94,13 @@ class Entry{
         int getSndSize();
         
         void freeIcon();
+
+        virtual SfoInfo getSfoInfo(){
+            SfoInfo info;
+            strcpy(info.title, name.c_str());
+            strcpy(info.gameid, "HOMEBREW");
+            return info;
+        };
         
         virtual void loadIcon()=0;
         virtual void getTempData1()=0;
@@ -86,6 +117,13 @@ class Entry{
         
         static bool isZip(const char* path);
         static bool isRar(const char* path);
+        static bool isPRX(const char* path);
+        static bool isARK(const char* path);
+        static bool isTXT(const char* path);
+        static bool isIMG(const char* path);
+        static bool isMusic(const char* path);
+
+        static bool getSfoParam(unsigned char* sfo_buffer, int buf_size, char* param_name, unsigned char* var, int* var_size);
         
         static bool cmpEntriesForSort (Entry* i, Entry* j);
         

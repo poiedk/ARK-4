@@ -35,6 +35,9 @@
 #include "rebootconfig.h"
 #include "sysmem.h"
 
+extern u32 sctrlHENFakeDevkitVersion();
+extern int is_plugins_loading;
+
 // Previous Module Start Handler
 STMOD_HANDLER previous = NULL;
 
@@ -66,17 +69,35 @@ static void ARKSyspatchOnModuleStart(SceModule2 * mod)
 
     // System fully booted Status
     static int booted = 0;
+
+    // Fix 6.60 plugins on 6.61
+    if (is_plugins_loading){
+        hookImportByNID(mod, "SysMemForKernel", 0x3FC9AE6A, &sctrlHENFakeDevkitVersion);
+        hookImportByNID(mod, "SysMemUserForUser", 0x3FC9AE6A, &sctrlHENFakeDevkitVersion);
+    }
     
     #ifdef DEBUG
     printk("syspatch: %s(0x%04X)\r\n", mod->modname, sceKernelInitApitype());
     hookImportByNID(mod, "KDebugForKernel", 0x84F370BC, printk);
+
+    if (sceKernelFindModuleByName("vsh_module") == NULL){
+        initScreen(DisplaySetFrameBuf);
+        PRTSTR1("Module: %s", mod->modname);
+    }
+
     if(strcmp(mod->modname, "sceDisplay_Service") == 0)
     {
         // can use screen now
         DisplaySetFrameBuf = (void*)sctrlHENFindFunction("sceDisplay_Service", "sceDisplay", 0x289D82FE);
         goto flush;
     }
+
     #endif
+
+    if (strcmp(mod->modname, "sceController_Service") == 0){
+        initController(mod);
+        goto flush;
+    }
 
     if(strcmp(mod->modname, "sceLoadExec") == 0)
     {
@@ -105,14 +126,26 @@ static void ARKSyspatchOnModuleStart(SceModule2 * mod)
         goto flush;
     }
 
-    if (strcmp(mod->modname, "tekken") == 0) {
-		u32 func = sctrlHENFindImport(mod->modname, "scePower", 0x34F9C463);
-		if (func) {
-			_sw(JR_RA, func);
-            _sw(LI_V0(222), func+4);
-            goto flush;
-		}
-	}
+    // unlocks variable bitrate on old homebrew
+    if (strcmp(mod->modname, "sceMp3_Library") == 0){
+        hookImportByNID(mod, "SysMemUserForUser", 0xFC114573, &sctrlHENFakeDevkitVersion);
+        goto flush;
+    }
+
+    if (strcmp(mod->modname, "sceNpSignupPlugin_Module") == 0) {
+        patch_npsignup(mod);
+        goto flush;
+    }
+
+    if (strcmp(mod->modname, "sceVshNpSignin_Module") == 0) {
+        patch_npsignin(mod);
+        goto flush;
+    }
+
+    if (strcmp(mod->modname, "sceNp") == 0) {
+        patch_np(mod, 9, 90);
+        goto flush;
+    }
 
     // Boot Complete Action not done yet
     if(booted == 0)
@@ -150,7 +183,6 @@ exit:
 // Add Module Start Patcher
 void syspatchInit(void)
 {
-
     // Register Module Start Handler
     previous = sctrlHENSetStartModuleHandler(ARKSyspatchOnModuleStart);
 }

@@ -11,7 +11,6 @@ SPU_OBJS = \
 C_OBJS =    \
 	main.o   \
 	vlf.o    \
-	vitamem.o \
 	syspatch.o  \
 	gameinfo.o   \
 	vitaflash.o   \
@@ -41,7 +40,7 @@ USE_KERNEL_LIBS=1
 
 LIBDIR = $(ARKROOT)/libs
 LDFLAGS =  -nostartfiles
-LIBS = -lpspsemaphore -lpspsystemctrl_kernel -lcolordebugger
+LIBS = -lpspsemaphore -lpspsystemctrl_kernel
 
 PSP_FW_VERSION = 660
 

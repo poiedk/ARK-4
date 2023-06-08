@@ -3,7 +3,7 @@ INCDIR = $(PSPSDK)/include $(ARKROOT)/common/include $(ARKROOT)
 LIBS = -L $(ARKROOT)/libs -lgraphics -lcolordebugger -lansic
 TARGET = ARK4.BIN
 
-PYTHON=$(shell which python2)
+PYTHON=$(shell which python3)
 
 all: pre-build $(TARGET)
 
@@ -15,12 +15,12 @@ C_OBJS = \
 	main.o \
 	loader.o \
 	reboot.o \
+	flashinstall.o \
 	$(ARKROOT)/common/utils/functions.o \
 	$(ARKROOT)/common/utils/freemem.o \
 	$(ARKROOT)/common/utils/imports.o \
 	$(ARKROOT)/common/utils/patches.o \
 	$(ARKROOT)/common/utils/scanner.o \
-	$(ARKROOT)/core/compat/psp/flashinstall.o \
 	$(ARKROOT)/core/compat/vita/vitaflash.o \
 	$(ARKROOT)/core/compat/vitapops/popsdisplay.o \
 	$(ARKROOT)/core/systemctrl/src/loadexec.o

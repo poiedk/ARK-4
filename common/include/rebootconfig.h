@@ -51,8 +51,8 @@ typedef struct RebootConfigARK {
     unsigned int reboot_buffer_size;
     unsigned char iso_mode;
     unsigned char iso_disc_type;
-    char iso_path[REBOOTEX_CONFIG_ISO_PATH_MAXSIZE];
-    struct {
+    char iso_path[REBOOTEX_CONFIG_ISO_PATH_MAXSIZE]; // inferno ISO path
+    struct { // runtime module
         char *before;
         void *buffer;
         u32 size;

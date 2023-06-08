@@ -12,10 +12,14 @@
 #include "iso.h"
 #include "eboot.h"
 #include "unziprar.h"
+#include "texteditor.h"
+#include "image_viewer.h"
+#include "music_player.h"
 
 #define ROOT_DIR "ms0:/" // Initial directory
 #define GO_ROOT "ef0:/" // PSP Go initial directory
 #define FTP_ROOT "ftp:/" // FTP directory
+#define UMD_ROOT "disc0:/" // UMD directory
 #define PAGE_SIZE 10 // maximum entries shown on screen
 #define BUF_SIZE 1024*16 // 16 kB buffer for copying files
 
@@ -28,22 +32,21 @@ static Browser* self;
 typedef BrowserFile File;
 typedef BrowserFolder Folder;
 
-#define MAX_OPTIONS 10
-static const struct {
-        int x;
-        int y;
-        char* name;
-} pEntries[MAX_OPTIONS] = {
-    {10, 80, "Cancel"},
-    {10, 100, "Copy"},
-    {10, 120, "Cut"},
-    {10, 140, "Paste"},
-    {10, 160, "Delete"},
-    {10, 180, "Rename"},
-    {10, 200, "New Folder"},
-    {10, 220, "Go to ms0:/"},
-    {10, 240, "Go to ef0:/"},
-    {10, 260, "Go to ftp:/"}
+extern "C" int kuKernelLoadModule(const char*, int, void*);
+
+#define MAX_OPTIONS 12
+static char* pEntries[MAX_OPTIONS] = {
+    (char*) "Cancel",
+    (char*) "Copy",
+    (char*) "Cut",
+    (char*) "Paste",
+    (char*) "Delete",
+    (char*) "Rename",
+    (char*) "Create new",
+    (char*) "Go to ms0:/",
+    (char*) "Go to ef0:/",
+    (char*) "Go to ftp:/",
+    (char*) "Go to disc0:/",
 };
 
 BrowserDriver* Browser::ftp_driver = NULL;
@@ -61,16 +64,28 @@ Browser::Browser(){
     this->clipboard = new vector<string>(); // list of paths to paste
     this->draw_progress = false;
     this->optionsmenu = NULL;
-    this->checkBox = new Image(PKG_PATH, YA2D_PLACE_VRAM, common::findPkgOffset("CHECK.PNG"));
-    this->uncheckBox = new Image(PKG_PATH, YA2D_PLACE_VRAM, common::findPkgOffset("UNCHECK.PNG"));
-    this->folderIcon = new Image(PKG_PATH, YA2D_PLACE_VRAM, common::findPkgOffset("FOLDER.PNG"));
-    this->fileIcon = new Image(PKG_PATH, YA2D_PLACE_VRAM, common::findPkgOffset("FILE.PNG"));
-    
+
+    this->hide_main_window = false;
     this->optionsDrawState = 0;
     this->optionsAnimX = 0;
     this->optionsAnimY = 0;
     this->pEntryIndex = 0;
     this->animation = 0;
+
+    int psp_model = common::getPspModel();
+    if (psp_model != PSP_GO){
+        pEntries[EF0_DIR] = NULL;
+    }
+    else{
+        pEntries[UMD_DIR] = NULL;
+    }
+    if (psp_model == PSP_11000 || ftp_driver == NULL){
+        pEntries[FTP_DIR] = NULL;
+    }
+    if (IS_VITA(common::getArkConfig()) || psp_model == PSP_GO){
+        pEntries[UMD_DIR] = NULL;
+    }
+
     this->refreshDirs();
 }
 
@@ -96,9 +111,13 @@ void Browser::clearEntries(){
     entries->clear();
 }
 
+bool Browser::isRootDir(string dir){
+    return (dir == ROOT_DIR || dir == GO_ROOT || dir == FTP_ROOT || dir == UMD_ROOT);
+}
+
 void Browser::moveDirUp(){
     // Move to the parent directory of this->cwd
-    if (this->cwd == ROOT_DIR || this->cwd == GO_ROOT || this->cwd == FTP_ROOT)
+    if (isRootDir(this->cwd))
         return;
     size_t lastSlash = this->cwd.rfind("/", this->cwd.rfind("/", string::npos)-1);
     this->cwd = this->cwd.substr(0, lastSlash+1);
@@ -127,7 +146,7 @@ void Browser::update(){
         this->refreshDirs();
     }
     else if (Iso::isISO(this->get()->getPath().c_str())){
-        if (this->cwd == "ms0:/ISO/VIDEO/" || this->cwd == "ef0:/ISO/VIDEO")
+        if (this->cwd == "ms0:/ISO/VIDEO/" || this->cwd == "ef0:/ISO/VIDEO/")
             Iso::executeVideoISO(this->get()->getPath().c_str());
         else{
             Iso* iso = new Iso(this->get()->getPath());
@@ -144,12 +163,228 @@ void Browser::update(){
     else if (Entry::isRar(this->get()->getPath().c_str())){
         extractArchive(1);
     }
+    else if (Entry::isPRX(this->get()->getPath().c_str())){
+        installPlugin();
+    }
+	else if (Entry::isARK(this->get()->getPath().c_str())) {
+		installTheme();
+	}
+    else if (Entry::isTXT(this->get()->getPath().c_str())){
+        optionsmenu = new TextEditor(this->get()->getPath());
+        optionsmenu->control();
+        TextEditor* aux = (TextEditor*)optionsmenu;
+        optionsmenu = NULL;
+        delete aux;
+    }
+    else if (Entry::isIMG(this->get()->getPath().c_str())){
+        optionsmenu = new ImageViewer(this->get()->getPath());
+        optionsmenu->control();
+        ImageViewer* aux = (ImageViewer*)optionsmenu;
+        optionsmenu = NULL;
+        delete aux;
+    }
+    else if (Entry::isMusic(this->get()->getPath().c_str())){
+        this->hide_main_window = true;
+        vector<string> selected;
+        for (int i=0; i<entries->size(); i++){
+            BrowserFile* e = (BrowserFile*)entries->at(i);
+            if (e->isSelected() && e->getFileType() == FILE_MUSIC) selected.push_back(e->getPath());
+        }
+        BrowserFile* e = (BrowserFile*)get();
+        if (!e->isSelected()) selected.push_back(e->getPath());
+        if (selected.size() > 1){
+            optionsmenu = new MusicPlayer(&selected);
+        }
+        else{
+            optionsmenu = new MusicPlayer(this->get()->getPath());
+        }
+        optionsmenu->control();
+        MusicPlayer* aux = (MusicPlayer*)optionsmenu;
+        optionsmenu = NULL;
+        delete aux;
+        hide_main_window = false;
+    }
+}
+
+void Browser::installTheme() {
+	Entry* e = this->get();
+	t_options_entry options_entries[] = {
+		{OPTIONS_CANCELLED, "Cancel"},
+		{0, "Preview"},
+		{1, "Install"},
+	};
+
+	// Sanity checks
+	if(e->getName() != "THEME.ARK" || e->getPath().substr(2) == "0:/PSP/SAVEDATA/ARK_01234/THEME.ARK") return;
+
+	optionsmenu = new OptionsMenu("Install Theme", sizeof(options_entries)/sizeof(t_options_entry), options_entries);
+	int ret = optionsmenu->control();
+	OptionsMenu* aux = optionsmenu;
+	optionsmenu = NULL;
+	delete aux;
+
+	if (ret == OPTIONS_CANCELLED) return;
+
+    // load new theme
+	SystemMgr::pauseDraw();
+    printf("deleting current theme resources\n");
+    common::deleteTheme();
+    printf("set new theme path to: %s\n", e->getPath().c_str());
+    common::setThemePath((char*)e->getPath().c_str());
+    printf("loading new theme\n");
+    common::loadTheme();
+    SystemMgr::resumeDraw();
+    printf("done\n");
+
+	// Ask before overwriting theme
+	if (ret == 0) {
+        t_options_entry options_entries[] = {
+            {OPTIONS_CANCELLED, "Cancel"},
+            {0, "Accept Install"},
+            {1, "Use theme without installing"},
+        };
+        optionsmenu = new OptionsMenu("Install Theme", sizeof(options_entries)/sizeof(t_options_entry), options_entries);
+        int ret = optionsmenu->control();
+        OptionsMenu* aux = optionsmenu;
+        optionsmenu = NULL;
+        delete aux;
+
+        if (ret == 1){
+            return;
+        }
+        else if (ret == OPTIONS_CANCELLED){
+            // reset back to default theme
+            SystemMgr::pauseDraw();
+            common::deleteTheme();
+            common::setThemePath();
+            common::loadTheme();
+            SystemMgr::resumeDraw();
+            return;
+        }
+    }
+
+    deleteFile(THEME_NAME);
+    copyFile(e->getPath(), common::getArkConfig()->arkpath);
+}
+
+void Browser::installPlugin(){
+    Entry* e = this->get();
+    t_options_entry options_entries[] = {
+        {OPTIONS_CANCELLED, "Cancel"},
+        {0, "Always"},
+        {1, "Game"},
+        {2, "POPS (PS1)"},
+        {3, "VSH (XMB)"},
+        {4, "UMD/ISO"},
+        {5, "Homebrew"},
+        {6, "<Game ID>"},
+        {7, "<LoadStart Module>"},
+    };
+
+    optionsmenu = new OptionsMenu("Install Plugin", sizeof(options_entries)/sizeof(t_options_entry), options_entries);
+    int ret = optionsmenu->control();
+    OptionsMenu* aux = optionsmenu;
+    optionsmenu = NULL;
+    delete aux;
+
+    if (ret == OPTIONS_CANCELLED) return;
+
+    string mode;
+
+    if (ret < 6){
+        char* modes[] = {"always", "game", "ps1", "xmb", "psp", "homebrew"};
+        mode = modes[ret];
+    }
+    else if (ret == 6){
+        SystemMgr::pauseDraw();
+        OSK osk;
+        osk.init("Game ID (i.e. ULUS01234)", "", 50);
+        osk.loop();
+        int osk_res = osk.getResult();
+        if(osk_res != OSK_CANCEL)
+        {
+            char tmpText[51];
+            osk.getText((char*)tmpText);
+            mode = tmpText;
+        }
+        osk.end();
+        SystemMgr::resumeDraw();
+        if (osk_res == OSK_CANCEL) return;
+    }
+    else if (ret == 7){
+        const char* path = e->getPath().c_str();
+        int uid = kuKernelLoadModule(path, 0, NULL);
+        int res = sceKernelStartModule(uid, strlen(path) + 1, (void*)path, NULL, NULL);
+        return;
+    }
+
+    char ark_path[ARK_PATH_SIZE];
+    strcpy(ark_path, common::getArkConfig()->arkpath);
+    strcat(ark_path, "PLUGINS.TXT");
+    string plugin = e->getPath();
+    char* plugins_txt = "ms0:/SEPLUGINS/PLUGINS.TXT";
+    if (plugin[0] == 'e' && plugin[1] == 'f'){
+        plugins_txt[0] = 'e';
+        plugins_txt[1] = 'f';
+    }
+    t_options_entry path_entries[] = {
+        {OPTIONS_CANCELLED, "Cancel"},
+        {0, plugins_txt},
+        {1, ark_path},
+    };
+
+    optionsmenu = new OptionsMenu("Install path", sizeof(path_entries)/sizeof(t_options_entry), path_entries);
+    int pret = optionsmenu->control();
+    aux = optionsmenu;
+    optionsmenu = NULL;
+    delete aux;
+
+    if (pret == OPTIONS_CANCELLED) return;
+
+    progress_desc[0] = "Installing Plugin";
+    progress_desc[1] = "";
+    progress_desc[2] = "";
+    progress_desc[3] = "";
+    progress_desc[4] = "";
+    progress = 0;
+    max_progress = 1;
+    draw_progress = true;
+
+    int fd = sceIoOpen(path_entries[pret+1].name, PSP_O_WRONLY|PSP_O_CREAT|PSP_O_APPEND, 0777);
+    sceIoWrite(fd, "\n", 1);
+    sceIoWrite(fd, mode.c_str(), mode.size());
+    sceIoWrite(fd, ", ", 2);
+    sceIoWrite(fd, plugin.c_str(), plugin.size());
+    sceIoWrite(fd, ", on\n", 5);
+    sceIoClose(fd);
+
+    draw_progress = false;
 }
 
 void Browser::extractArchive(int type){
 
+    string root = get()->getPath().substr(0, 5);
+    string extract_to_root = string("Extract to ")+root;
+
+    t_options_entry options_entries[] = {
+        {OPTIONS_CANCELLED, "Cancel"},
+        {0, "Extract here"},
+        {1, (char*)(extract_to_root.c_str())},
+    };
+
+    optionsmenu = new OptionsMenu("Extract Archive to", sizeof(options_entries)/sizeof(t_options_entry), options_entries);
+    int ret = optionsmenu->control();
+    OptionsMenu* aux = optionsmenu;
+    optionsmenu = NULL;
+    delete aux;
+
+    if (ret == OPTIONS_CANCELLED) return;
+
     string name = this->get()->getName();
-    string dest = this->cwd + name.substr(0, name.rfind('.')) + "/";
+    string dest = ((ret == 0)? this->cwd : root) + name.substr(0, name.rfind('.')) + "/";
+
+    printf("extracting archive to: %s\n", dest.c_str());
+
     sceIoMkdir(dest.c_str(), 0777);
 
     progress_desc[0] = "Extracting archive";
@@ -205,33 +440,67 @@ void Browser::refreshDirs(){
         }    
     }
 
-    DIR* dir = opendir(this->cwd.c_str());
-    if (dir == NULL){ // can't open directory
+    printf("opening dir: %s\n", this->cwd.c_str());
+
+    int dir;
+
+    refresh_retry:
+    dir = sceIoDopen(this->cwd.c_str());
+
+    if (dir < 0){ // can't open directory
+        printf("can't open\n");
         if (this->cwd == ROOT_DIR) // ms0 failed
             this->cwd = GO_ROOT; // go to ef0
         else
             this->cwd = ROOT_DIR;
-        refreshDirs();
-        return;
+        goto refresh_retry;
     }
 
-    struct dirent* dit;
+    if (cwd == ROOT_DIR || cwd == GO_ROOT){
+        devsize = common::beautifySize(common::deviceSize(cwd));
+    }
+    else devsize = "";
+
+    SceIoDirent* dit = (SceIoDirent*)malloc(sizeof(SceIoDirent));
 
     vector<Entry*> folders;
     vector<Entry*> files;
-        
-    while ((dit = readdir(dir))){
-        if (common::fileExists(string(this->cwd)+string(dit->d_name)))
-            files.push_back(new File(string(this->cwd)+string(dit->d_name)));
-        else
-            folders.push_back(new Folder(string(this->cwd)+string(dit->d_name)+"/"));
+
+    pspMsPrivateDirent *pri_dirent = (pspMsPrivateDirent*)malloc(sizeof(pspMsPrivateDirent));
+    pri_dirent->size = sizeof(pspMsPrivateDirent);
+    dit->d_private = (void*)pri_dirent;
+
+    while ((sceIoDread(dir, dit)) > 0){
+        printf("got entry: %s\n", dit->d_name);
+        string ptmp = string(this->cwd)+string(dit->d_name);
+        bool folder_exists = (strcmp(dit->d_name, ".") == 0 || strcmp(dit->d_name, "..") == 0 || common::folderExists(ptmp+"/"));
+        if (folder_exists || FIO_SO_ISDIR(dit->d_stat.st_attr)){
+            printf("is dir\n");
+            if (!folder_exists){
+                ptmp = string(this->cwd) + string(dit->d_name).substr(0, 4) + string(pri_dirent->s_name) + "/";
+                printf("%d: %s\n", (int)common::folderExists(ptmp), ptmp.c_str());
+            }
+            folders.push_back(new Folder(ptmp+"/"));
+        }
+        else{
+            printf("is file\n");
+            if (!common::fileExists(ptmp)){
+                ptmp = string(this->cwd) + string(dit->d_name).substr(0, 4) + string(pri_dirent->s_name);
+                printf("%d: %s\n", (int)common::fileExists(ptmp), ptmp.c_str());
+            }
+            files.push_back(new File(ptmp));
+        }
+            
     }
-    closedir(dir);
+    printf("closing and cleaning\n");
+    sceIoDclose(dir);
 
-    if (common::getConf()->sort_entries){
+    free(pri_dirent);
+    free(dit);
 
-        Entry* dot = NULL;
-        Entry* dotdot = NULL;
+    Entry* dot = NULL;
+    Entry* dotdot = NULL;
+    if (folders.size() > 0){
         if (folders[0]->getName() == "./"){
             dot = folders[0];
             folders.erase(folders.begin());
@@ -240,26 +509,30 @@ void Browser::refreshDirs(){
             dotdot = folders[0];
             folders.erase(folders.begin());
         }
+    }
 
+    if (common::getConf()->sort_entries){
+        printf("sorting entries\n");
         std::sort(folders.begin(), folders.end(), Entry::cmpEntriesForSort);
         std::sort(files.begin(), files.end(), Entry::cmpEntriesForSort);
-
-        if (dotdot) folders.insert(folders.begin(), dotdot);
-        if (dot) folders.insert(folders.begin(), dot);
     }
+
+    if (!dotdot && !isRootDir(this->cwd)) dotdot = new Folder(this->cwd+"../");
+    if (dotdot) folders.insert(folders.begin(), dotdot);
+    if (!dot && !isRootDir(this->cwd)) dot = new Folder(this->cwd+"./");
+    if (dot) folders.insert(folders.begin(), dot);
     
+    printf("merging entries\n");
     SystemMgr::pauseDraw();
     for (int i=0; i<folders.size(); i++)
         entries->push_back(folders.at(i));
     for (int i=0; i<files.size(); i++)
         entries->push_back(files.at(i));
+    if (this->entries->size() == 0)
+        this->entries->push_back(new Folder("./"));
     SystemMgr::resumeDraw();
     
-    if (this->entries->size() == 0){
-        this->cwd = ROOT_DIR;
-        refreshDirs();
-        return;
-    }
+    printf("done\n");
 }
         
 
@@ -267,48 +540,52 @@ void Browser::drawScreen(){
 
     const int xoffset = 115;
     int yoffset = 50;
+    bool focused = (optionsmenu==NULL);
     
-    
+    // draw scrollbar (if moving)
     if (moving && entries->size() > 0){
         int height = 230/entries->size();
         int x = xoffset-65;
         int y = yoffset-13;
-        common::getImage(IMAGE_DIALOG)->draw_scale(x+2, y, 1, height*entries->size());
-        common::getImage(IMAGE_DIALOG)->draw_scale(x, y + index*height, 5, height);
+        ya2d_draw_rect(x+2, y, 3, height*entries->size(), DARKGRAY, 1);
+        ya2d_draw_rect(x+1, y + index*height, 5, height, DARKGRAY, 1);
+        ya2d_draw_rect(x+3, y, 1, height*entries->size(), LITEGRAY, 1);
+        ya2d_draw_rect(x+2, y + index*height, 3, height, LITEGRAY, 1);
     }
 
+    // draw main window
     common::getImage(IMAGE_DIALOG)->draw_scale(xoffset-50, yoffset-20, 410, 230);
     
+    // no items loaded? draw wait icon
     if (entries->size() == 0){
+        static float angle = 1.0;
         Image* img = common::getImage(IMAGE_WAITICON);
-        img->draw((480-img->getTexture()->width)/2, (272-img->getTexture()->height)/2);
+        img->draw_rotate((480-img->getTexture()->width)/2, (272-img->getTexture()->height)/2, angle);
+        angle+=0.2;
         return;
     }
     
+    // draw each entry
     for (int i=this->start; i<min(this->start+PAGE_SIZE, (int)entries->size()); i++){
         File* e = (File*)this->entries->at(i);
-        
-        if(e->isSelected()){
-            this->checkBox->draw(xoffset-30, yoffset-10);
-        }else{
-            this->uncheckBox->draw(xoffset-30, yoffset-10);
-        }
+        // draw checkbox
+        common::getCheckbox((int)e->isSelected())->draw(xoffset-30, yoffset-10);
+        // draw focused entry
         if (i == index && this->enableSelection){
             if (animating){
-                common::printText(xoffset, yoffset, e->getName().c_str(), LITEGRAY, SIZE_MEDIUM, true, true);
+                common::printText(xoffset, yoffset, e->getName().c_str(), LITEGRAY, SIZE_MEDIUM, focused, focused);
                 animating = false;
             }
             else
-                common::printText(xoffset, yoffset, e->getName().c_str(), LITEGRAY, SIZE_BIG, true, true);
+                common::printText(xoffset, yoffset, e->getName().c_str(), LITEGRAY, SIZE_BIG, focused, focused);
         }
+        // draw non-focused entry
         else{
             common::printText(xoffset, yoffset, this->formatText(e->getName()).c_str());
         }
+        // draw entry size and icon
         common::printText(400, yoffset, e->getSize().c_str());
-        if (string(e->getType()) == "FOLDER")
-            this->folderIcon->draw(xoffset-15, yoffset-10);
-        else
-            this->fileIcon->draw(xoffset-15, yoffset-10);
+        common::getIcon(e->getFileType())->draw(xoffset-15, yoffset-10);
         yoffset += 20;
     }
 }
@@ -361,8 +638,10 @@ void Browser::draw(){
         }
         break;
     case 0:
-        this->drawScreen();
-        this->drawOptionsMenu();
+        if (!this->hide_main_window){
+            this->drawScreen();
+            this->drawOptionsMenu();
+        }
         this->drawProgress();
         if (this->optionsmenu != NULL)
             this->optionsmenu->draw();
@@ -418,6 +697,53 @@ Entry* Browser::get(){
     // Obtain the currectly selected entry, this will return the instance of the entry, not it's name
     return this->entries->at(this->index);
 }
+
+void Browser::left() {
+	if (this->entries->size() == 2) return;
+	if (this->index == 0) return;
+	if (this->index > 0) {
+		this->index = 1 * (this->index - PAGE_SIZE);
+		this->start = 1 * (this->start - PAGE_SIZE);
+	}
+	if(this->index < 0 || this->start < 0) {
+		this->index = 0;
+		this->start = 0;
+	}
+    this->animating = true;
+    common::playMenuSound();
+}
+
+void Browser::right() {
+	if (this->entries->size() == 2) return;
+
+
+	if (this->index + PAGE_SIZE >= entries->size()) {
+        this->index = (entries->size()-1)-PAGE_SIZE+1;
+		this->start = this->start-PAGE_SIZE+1;
+		if(this->index > this->start+PAGE_SIZE)
+			this->start = this->start+PAGE_SIZE;
+	}
+
+	   	//return;
+	if (this->index == 0) {
+		this->index = PAGE_SIZE-1;
+		this->start = PAGE_SIZE-1;
+	}
+	else if (this->index < PAGE_SIZE-1){
+            this->index = this->index + PAGE_SIZE-1;
+			this->start = this->start + PAGE_SIZE-1;
+    }
+	else {
+		this->index = this->index + PAGE_SIZE-1;
+		this->start = this->start + PAGE_SIZE-1;
+	}
+	
+    this->animating = true;
+    common::playMenuSound();
+
+
+
+}
         
 void Browser::down(){
     // Move the cursor down, this updates index and page
@@ -469,9 +795,13 @@ void Browser::recursiveFolderDelete(string path){
     {
         SceIoDirent entry;
         memset(&entry, 0, sizeof(SceIoDirent));
+
+        pspMsPrivateDirent *pri_dirent = (pspMsPrivateDirent*)malloc(sizeof(pspMsPrivateDirent));
+        pri_dirent->size = sizeof(pspMsPrivateDirent);
+        entry.d_private = (void*)pri_dirent;
         
         //allocate memory to store the full file paths
-        char * new_path = new char[path.length() + 256];
+        string new_path;
 
         //start reading directory entries
         while(sceIoDread(d, &entry) > 0)
@@ -484,24 +814,90 @@ void Browser::recursiveFolderDelete(string path){
             };
             
             //build new file path
-            strcpy(new_path, path.c_str());
-            strcat(new_path, entry.d_name);
-            
-            if(common::fileExists(new_path))
+            new_path = path + string(entry.d_name);
+
+            if (FIO_SO_ISDIR(entry.d_stat.st_attr)){
+                new_path = new_path + "/";
+                if (!common::folderExists(new_path)){
+                    new_path = path + string(entry.d_name).substr(0, 4) + string(pri_dirent->s_name) + "/";
+                    printf("%d: %s\n", (int)common::folderExists(new_path), new_path.c_str());
+                }
+                recursiveFolderDelete(new_path);
+            }
+            else{
+                if (!common::fileExists(new_path)){
+                    new_path = path + string(entry.d_name).substr(0, 4) + string(pri_dirent->s_name);
+                    printf("%d: %s\n", (int)common::fileExists(new_path), new_path.c_str());
+                }
                 self->deleteFile(new_path);
-            else {
-                //not a file? must be a folder
-                strcat(new_path, "/");
-                recursiveFolderDelete(string(new_path)); //try to delete folder content
             }
             
         };
         
         sceIoDclose(d); //close directory
         sceIoRmdir(path.substr(0, path.length()-1).c_str()); //delete empty folder
-
-        delete [] new_path; //clear allocated memory
+        free(pri_dirent);
     };
+}
+
+long Browser::recursiveSize(string path){
+    SceUID d = sceIoDopen(path.c_str());
+    
+    long total_size = 0;
+
+    if(d >= 0)
+    {
+        SceIoDirent entry;
+        memset(&entry, 0, sizeof(SceIoDirent));
+
+        pspMsPrivateDirent *pri_dirent = (pspMsPrivateDirent*)malloc(sizeof(pspMsPrivateDirent));
+        pri_dirent->size = sizeof(pspMsPrivateDirent);
+        entry.d_private = (void*)pri_dirent;
+        
+        //allocate memory to store the full file paths
+        string new_path;
+
+        //start reading directory entries
+        while(sceIoDread(d, &entry) > 0)
+        {
+            //skip . and .. entries
+            if (!strcmp(".", entry.d_name) || !strcmp("..", entry.d_name)) 
+            {
+                memset(&entry, 0, sizeof(SceIoDirent));
+                continue;
+            };
+            
+            //build new file path
+            new_path = path + string(entry.d_name);
+
+            if (FIO_SO_ISDIR(entry.d_stat.st_attr)){
+                new_path = new_path + "/";
+                if (!common::folderExists(new_path)){
+                    new_path = path + string(entry.d_name).substr(0, 4) + string(pri_dirent->s_name) + "/";
+                    printf("%d: %s\n", (int)common::folderExists(new_path), new_path.c_str());
+                }
+                total_size += recursiveSize(new_path);
+            }
+            else{
+                if (!common::fileExists(new_path)){
+                    new_path = path + string(entry.d_name).substr(0, 4) + string(pri_dirent->s_name);
+                    printf("%d: %s\n", (int)common::fileExists(new_path), new_path.c_str());
+                }
+                total_size += common::fileSize(new_path);
+            }
+            
+        };
+        
+        sceIoDclose(d); //close directory
+        sceIoRmdir(path.substr(0, path.length()-1).c_str()); //delete empty folder
+        free(pri_dirent);
+    }
+    else if ((d=sceIoOpen(path.c_str(), PSP_O_RDONLY, 0777)) >= 0){
+        total_size = sceIoLseek(d, 0, SEEK_END);
+        sceIoClose(d);
+    }
+
+    return total_size;
 }
 
 void Browser::deleteFolder(string path){
@@ -644,6 +1040,10 @@ int Browser::copy_folder_recursive(const char * source, const char * destination
         {
             SceIoDirent entry;
             memset(&entry, 0, sizeof(SceIoDirent));
+
+            pspMsPrivateDirent* pri_dirent = (pspMsPrivateDirent*)malloc(sizeof(pspMsPrivateDirent));
+            pri_dirent->size = sizeof(pspMsPrivateDirent);
+            entry.d_private = (void*)pri_dirent;
             
             //start reading directory entries
             while(sceIoDread(dir, &entry) > 0)
@@ -655,21 +1055,33 @@ int Browser::copy_folder_recursive(const char * source, const char * destination
                     continue;
                 };
                 string src = new_source + entry.d_name;
-                if (common::fileExists(src)){ //is it a file
-                    printf("Copying file from %s -> %s\n", src.c_str(), new_destination.c_str());
+
+                if (FIO_SO_ISDIR(entry.d_stat.st_attr)){
+                    string dst;
+                    if (!common::folderExists(src)){
+                        string sname = string(entry.d_name).substr(0, 4) + string(pri_dirent->s_name);
+                        src = new_source + sname;
+                        dst = new_destination + sname;
+                        printf("%d: %s\n", (int)common::folderExists(src), src.c_str());
+                    }
+                    else{
+                        dst = new_destination + entry.d_name;
+                    }
+                    copy_folder_recursive(src.c_str(), dst.c_str());
+                }
+                else{
+                    if (!common::fileExists(src)){
+                        src = new_source + string(entry.d_name).substr(0, 4) + string(pri_dirent->s_name);
+                        printf("%d: %s\n", (int)common::fileExists(src), src.c_str());
+                    }
                     if (pasteMode == COPY || (pasteMode == CUT && pspIoMove(src, new_destination) < 0))
                         copyFile(src, new_destination); //copy file
                 }
-                else
-                {
-                    //try to copy as a folder
-                    string dst = new_destination + entry.d_name;
-                    copy_folder_recursive(src.c_str(), dst.c_str());
-                };
 
             };
             //close folder
             sceIoDclose(dir);
+            free(pri_dirent);
         };
     }
     
@@ -879,6 +1291,20 @@ void Browser::rename(){
 
 void Browser::removeSelection(){
     // Delete all paths in the paste buffer
+
+    t_options_entry opts[] = {
+        {OPTIONS_CANCELLED, "Cancel"},
+        {0, "Confirm"},
+    };
+
+    optionsmenu = new OptionsMenu("Confirm Deletion?", sizeof(opts)/sizeof(t_options_entry), opts);
+    int pret = optionsmenu->control();
+    OptionsMenu* aux = optionsmenu;
+    optionsmenu = NULL;
+    delete aux;
+
+    if (pret == OPTIONS_CANCELLED) return;
+
     draw_progress = true;
     this->fillClipboard();
     if (this->clipboard->size() == 0)
@@ -921,6 +1347,45 @@ void Browser::makedir(){
     this->refreshDirs();
 }
 
+void Browser::makefile(){
+    SystemMgr::pauseDraw();
+    OSK osk;
+    osk.init("Name of new file", "new file", 50);
+    osk.loop();
+    if(osk.getResult() != OSK_CANCEL)
+    {
+        char tmpText[51];
+        osk.getText((char*)tmpText);
+        string fileName = string(tmpText);
+        if (ftp_driver != NULL && ftp_driver->isDevicePath(this->cwd)){
+            ftp_driver->createFile(fileName);
+        }
+        else sceIoOpen((this->cwd+fileName).c_str(), PSP_O_WRONLY | PSP_O_CREAT, 0777);
+    }
+    osk.end();
+    SystemMgr::resumeDraw();
+    this->refreshDirs();
+}
+
+void Browser::createNew(){
+    t_options_entry opts[] = {
+        {OPTIONS_CANCELLED, "Cancel"},
+        {0, "Folder"},
+        {1, "File"},
+    };
+
+    optionsmenu = new OptionsMenu("Create new...", sizeof(opts)/sizeof(t_options_entry), opts);
+    int ret = optionsmenu->control();
+    OptionsMenu* aux = optionsmenu;
+    optionsmenu = NULL;
+    delete aux;
+
+    switch (ret){
+        case 0: makedir(); break;
+        case 1: makefile(); break;
+    }
+}
+
 void Browser::drawOptionsMenu(){
 
     switch (optionsDrawState){
@@ -940,11 +1405,17 @@ void Browser::drawOptionsMenu(){
             optionsAnimY = 52;
             common::getImage(IMAGE_DIALOG)->draw_scale(0, 52, 132, 220);
         
+            {
+            int x = 10;
+            int y = 80;
             for (int i=0; i<MAX_OPTIONS; i++){
+                if (pEntries[i] == NULL) continue;
                 if (i == pEntryIndex)
-                    common::printText(pEntries[i].x, pEntries[i].y, pEntries[i].name, LITEGRAY, SIZE_BIG, true);
+                    common::printText(x, y, pEntries[i], LITEGRAY, SIZE_BIG, true);
                 else
-                    common::printText(pEntries[i].x, pEntries[i].y, pEntries[i].name);
+                    common::printText(x, y, pEntries[i]);
+                y += 20;
+            }
             }
             break;
         case 3: // draw closing animation
@@ -969,29 +1440,58 @@ void Browser::optionsMenu(){
 
     Controller cont;
     Controller* pad = &cont;
+
+    pad->update();
     
     while (true){
         
         pad->update();
-        
+       // Down 
         if (pad->down()){
             common::playMenuSound();
-            if (pEntryIndex < MAX_OPTIONS-1){
-                pEntryIndex++;
-            }
-            else{
-                pEntryIndex = 0;
-            }
+            do {
+                if (pEntryIndex < MAX_OPTIONS-1){
+                    pEntryIndex++;
+                }
+                else{
+                    pEntryIndex = 0;
+                }
+            } while (pEntries[pEntryIndex] == NULL);
         }
+		// Up
         else if (pad->up()){
             common::playMenuSound();
-            if (pEntryIndex > 0){
-                pEntryIndex--;
-            }
-            else{
-                pEntryIndex = MAX_OPTIONS-1;
-            }
+            do {
+                if (pEntryIndex > 0){
+                    pEntryIndex--;
+                }
+                else{
+                    pEntryIndex = MAX_OPTIONS-1;
+                }
+            } while (pEntries[pEntryIndex] == NULL);
         }
+		// Right
+		else if (pad->right()) {
+			common::playMenuSound();
+			do {
+				if (pEntryIndex+3 < MAX_OPTIONS-1) {
+					pEntryIndex += 3;
+				}
+				else {
+					pEntryIndex = MAX_OPTIONS-1;
+				}
+			} while (pEntries[pEntryIndex] == NULL);
+		}
+		// Left
+		else if (pad->left()) {
+			common::playMenuSound();
+			do {
+				if (pEntryIndex-3 < 0)
+					pEntryIndex = 0;
+				else
+					pEntryIndex -= 3;
+			} while (pEntries[pEntryIndex] == NULL);
+		}
         else if (pad->decline() || pad->LT()){
             pEntryIndex = 0;
             break;
@@ -1019,16 +1519,17 @@ void Browser::options(){
     this->optionsMenu();
 
     switch (pEntryIndex){
-    case NO_MODE:                                                     break;
-    case COPY:        this->copy();                                   break;
-    case CUT:         this->cut();                                    break;
-    case PASTE:       this->paste();                                  break;
-    case DELETE:      this->removeSelection();                        break;
-    case RENAME:      this->rename();                                 break;
-    case MKDIR:       this->makedir();                                break;
+    case NO_MODE:                                                      break;
+    case COPY:        this->copy();                                    break;
+    case CUT:         this->cut();                                     break;
+    case PASTE:       this->paste();                                   break;
+    case DELETE:      this->removeSelection();                         break;
+    case RENAME:      this->rename();                                  break;
+    case CREATE:      this->createNew();                               break;
     case MS0_DIR:     this->cwd = ROOT_DIR;     this->refreshDirs();   break;
-    case EF0_DIR:     this->cwd = GO_ROOT;      this->refreshDirs();   break;
     case FTP_DIR:     this->cwd = FTP_ROOT;     this->refreshDirs();   break;
+    case EF0_DIR:     this->cwd = GO_ROOT;      this->refreshDirs();   break;
+    case UMD_DIR:     this->cwd = UMD_ROOT;     this->refreshDirs();   break;
     }
 }
         
@@ -1038,6 +1539,10 @@ void Browser::control(Controller* pad){
         this->up();
     else if (pad->down())
         this->down();
+	else if (pad->right())
+		this->right();
+	else if (pad->left())
+		this->left();
     else if (pad->accept())
         this->update();
     else if (pad->decline()){

@@ -26,7 +26,6 @@ class Menu{
         int threadIndex;
         int animating;
         float animState;
-        int fastScroll;
         bool fastScrolling;
         bool animDelay;
         bool initLoad;
@@ -55,6 +54,7 @@ class Menu{
         void clearEntries();
         size_t getVectorSize();
         vector<Entry*>* getVector();
+        int getIndex(){ return index; };
         
         bool isAnimating();
         bool empty();

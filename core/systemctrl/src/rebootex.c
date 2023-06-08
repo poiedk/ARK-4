@@ -25,6 +25,7 @@
 #include "rebootex.h"
 
 extern ARKConfig* ark_config;
+extern SEConfig se_config;
 
 // Original Load Reboot Buffer Function
 int (* OrigLoadReboot)(void * arg1, unsigned int arg2, void * arg3, unsigned int arg4) = NULL;
@@ -37,8 +38,6 @@ RebootConfigARK rebootex_config = {
 
 // custom rebootex
 void* custom_rebootex = NULL;
-void* external_rebootex = NULL;
-int rebootheap = -1;
 
 // Backup Reboot Buffer
 void backupRebootBuffer(void)
@@ -53,6 +52,9 @@ void backupRebootBuffer(void)
     // Copy ARK runtime Config
     if (IS_ARK_CONFIG(ARK_CONFIG))
         memcpy(ark_config, ARK_CONFIG, sizeof(ARKConfig));
+
+    // clearup SE Config
+    memset(&se_config, 0, sizeof(SEConfig));
     
     // Flush Cache
     flushCache();
@@ -62,8 +64,7 @@ void backupRebootBuffer(void)
 void restoreRebootBuffer(void)
 {
 
-    u8* rebootex = external_rebootex; // try custom rebootex from sctrlHENSetRebootexOverride
-    if (rebootex == NULL) rebootex = custom_rebootex; // try custom rebootex from REBOOT.BIN in ARK savedata
+    u8* rebootex = custom_rebootex; // try custom rebootex from sctrlHENSetRebootexOverride
     if (rebootex == NULL) return; // can't inject custom rebootex, make sure compat layer has defined one using sctrlHENSetRebootexOverride
 
     // clean rebootex memory

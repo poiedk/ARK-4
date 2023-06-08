@@ -78,6 +78,16 @@ PspIoDrv * sctrlHENFindDriver(char * drvname)
     
     // Restore Permission Level
     pspSdkSetK1(k1);
+
+    if (driver == NULL){
+        if(0 == stricmp(drvname, "msstor")) {
+			return sctrlHENFindDriver("eflash0a0f");
+		}
+
+		if(0 == stricmp(drvname, "msstor0p")) {
+			return sctrlHENFindDriver("eflash0a0f1p");
+		}
+    }
     
     // Return Driver
     return driver;
@@ -251,8 +261,9 @@ u32 sctrlHENFindImport(const char *szMod, const char *szLib, u32 nid)
     return 0;
 }
 
-void sctrlHENGetArkConfig(ARKConfig* conf){
-    memcpy(conf, ark_config, sizeof(ARKConfig));
+void* sctrlHENGetArkConfig(ARKConfig* conf){
+    if (conf) memcpy(conf, ark_config, sizeof(ARKConfig));
+    return ark_config;
 }
 
 void sctrlHENSetArkConfig(ARKConfig* conf){
@@ -277,11 +288,9 @@ void sctrlHENSetSpeed(int cpuspd, int busspd)
 }
 
 extern void* custom_rebootex;
-extern void* external_rebootex;
-extern int rebootheap;
 void sctrlHENSetRebootexOverride(const u8 *rebootex)
 {
-    if (rebootex != NULL && external_rebootex == NULL) // external rebootex (REBOOT.BIN file in savedata) has priority
+    if (rebootex != NULL) // override rebootex
         custom_rebootex = rebootex;
 }
 
@@ -320,14 +329,19 @@ void* sctrlHENSetPluginHandler(void* handler){
     return ret;
 }
 
-void sctrlHENGetRebootexConfig(RebootConfigARK* config){
+RebootConfigARK* sctrlHENGetRebootexConfig(RebootConfigARK* config){
     if (config){
         memcpy(config, &rebootex_config, sizeof(RebootConfigARK));
     }
+    return &rebootex_config;
 }
 
 void sctrlHENSetRebootexConfig(RebootConfigARK* config){
     if (config){
         memcpy(&rebootex_config, config, sizeof(RebootConfigARK));
     }
+}
+
+u32 sctrlHENFakeDevkitVersion(){
+    return FW_660;
 }

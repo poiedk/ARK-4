@@ -41,10 +41,14 @@ class GameManager : public SystemEntry{
         SceUID iconThread; // UID's of the icon thread
         SceUID iconSema; // semaphore to lock the thread when sleeping
         int dynamicIconRunning;
+        bool scanning;
         
         /* Screen drawing thread data */
         bool hasLoaded; // whether the main thread has finished loading or not, if not then only draw the background and animation
         
+        /* Options Menu instance, will be drawn by the draw thread if it's different from null */
+        OptionsMenu* optionsmenu;
+
         void endAllThreads();
         
         // Entry animation
@@ -74,6 +78,8 @@ class GameManager : public SystemEntry{
         void execApp();
         void extractHomebrew();
         bool pmfPrompt();
+        void gameOptionsMenu();
+        void startBoot();
         
     public:
     
@@ -117,6 +123,10 @@ class GameManager : public SystemEntry{
         string getName(){
             return "Game";
         }
+
+        void drawInfo(){
+            common::printText(5, 13, this->getInfo().c_str(), LITEGRAY, SIZE_MEDIUM, 0, 1);
+        }
         
         /* Control the icon threads */
         void pauseIcons();
@@ -131,7 +141,7 @@ class GameManager : public SystemEntry{
         }
 
         bool isStillLoading(){
-            return (this->selectedCategory < 0);
+            return (this->scanning);
         }
 
         /* Popup Menu */

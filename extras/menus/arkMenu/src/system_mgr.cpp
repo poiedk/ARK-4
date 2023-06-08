@@ -1,13 +1,14 @@
 #include <sstream>
 #include <pspkernel.h>
 #include <psppower.h>
+#include <kubridge.h>
+#include <systemctrl.h>
+#include <psprtc.h>
 
 #include "system_mgr.h"
 #include "common.h"
 #include "controller.h"
-
-
-extern "C" u32 sctrlHENGetMinorVersion();
+#include "music_player.h"
 
 string ark_version = "";
 struct tm today;
@@ -28,6 +29,7 @@ static int optionsDrawState = 0;
 static int optionsAnimState; // state of the animation
 static int optionsTextAnim; // -1 for no animation, other for animation
 static int screensaver = 0;
+static int fullscreen = 0;
 
 // options menu entries position of the entries
 static int pEntryIndex;
@@ -99,7 +101,7 @@ static void systemController(Controller* pad){
         else if (pEntryIndex-page_start == 2){
             if (pEntryIndex+1 < MAX_ENTRIES)
                 pEntryIndex++;
-            if (page_start+3 < MAX_ENTRIES){
+            if (page_start+3 < MAX_ENTRIES && (common::getConf()->menusize == 0 || common::getConf()->menusize == 2 || common::getConf()->menusize == 3)){
                 page_start++;
                 menu_draw_state = -1;
             }
@@ -111,7 +113,19 @@ static void systemController(Controller* pad){
 }
 
 static void drawOptionsMenuCommon(){
-    common::getImage(IMAGE_DIALOG)->draw_scale(0, optionsAnimState, 480, 140);
+	int loop_setup = 0;
+	if(common::getConf()->menusize == 0 || common::getConf()->menusize == 3) {
+    	common::getImage(IMAGE_DIALOG)->draw_scale(0, optionsAnimState, 480, 140); // LARGE
+		loop_setup = min(page_start+4, MAX_ENTRIES);
+	}
+	else if(common::getConf()->menusize == 2) {
+    	common::getImage(IMAGE_DIALOG)->draw_scale(0, optionsAnimState, 480, 100); // LARGE
+		loop_setup = min(page_start+4, MAX_ENTRIES);
+	}
+	else {
+    	common::getImage(IMAGE_DIALOG)->draw_scale(0, optionsAnimState, 480, 80); // SMALL
+		loop_setup = MAX_ENTRIES;
+	}
 
     int offset = (480-(MAX_ENTRIES*15))/2;
     for (int i=0; i<MAX_ENTRIES; i++){
@@ -124,15 +138,37 @@ static void drawOptionsMenuCommon(){
     }    
     
     int x = -130;
-    for (int i=page_start-1; i<min(page_start+4, MAX_ENTRIES); i++){
+    for (int i=page_start-1; i<loop_setup; i++){ // SMALL
         if (i<0){
             x += 160;
             continue;
         }
-        entries[i]->getIcon()->draw(x+menu_anim_state, optionsAnimState+15);
+		if(common::getConf()->menusize == 0 || common::getConf()->menusize == 3) {
+        	entries[i]->getIcon()->draw(x+menu_anim_state, optionsAnimState+15); // LARGE
+		}
+		else if(common::getConf()->menusize == 2) {
+        	entries[i]->getIcon()->draw_scale(x+menu_anim_state, optionsAnimState+15, 72, 72); // MEDIUM
+		}
+		else {
+			entries[i]->getIcon()->draw_scale(x+menu_anim_state, optionsAnimState+7, 52, 52); // SMALL
+		} 
         if (i==pEntryIndex && optionsDrawState==2)
-            common::printText(x+25, 130, entries[i]->getName().c_str(), LITEGRAY, SIZE_BIG, 1);
-        x += 160;
+			if(common::getConf()->menusize == 0 || common::getConf()->menusize == 3) {
+            	common::printText(x+25, 130, entries[i]->getName().c_str(), LITEGRAY, SIZE_BIG, 1); // LARGE
+			}
+			else if(common::getConf()->menusize == 2) {
+            	common::printText(x+16, 95, entries[i]->getName().c_str(), LITEGRAY, SIZE_MEDIUM, 1); // MEDIUM
+			}
+			else {
+				common::printText(x+12, 75, entries[i]->getName().c_str(), LITEGRAY, SIZE_LITTLE, 1); // SMALL
+			}
+
+			if(common::getConf()->menusize == 0 || common::getConf()->menusize == 3)
+        		x += 160;
+			else if(common::getConf()->menusize == 2)
+        		x += 120;
+			else
+        		x += 100;
     }
     switch (menu_draw_state){
         case -1:
@@ -155,6 +191,15 @@ static void drawOptionsMenuCommon(){
     }
 }
 
+static void dateTime() {
+	pspTime date;
+    sceRtcGetCurrentClockLocalTime(&date);
+
+	char dateStr[100];
+	sprintf(dateStr, "%04d/%02d/%02d %02d:%02d:%02d", date.year, date.month, date.day, date.hour, date.minutes, date.seconds);
+    common::printText( common::getConf()->battery_percent ? 270:300, 13, dateStr, LITEGRAY, SIZE_MEDIUM, 0, 0);
+}
+
 static void drawBattery(){
 
     if (scePowerIsBatteryExist()) {
@@ -165,12 +210,23 @@ static void drawBattery(){
 
         u32 color;
 
-        if (percent == 100)
-            color = GREEN;
-        else if (percent >= 17)
-            color = LITEGRAY;
-        else
-            color = RED;
+        if (scePowerIsBatteryCharging()){
+            color = BLUE;
+        }
+        else{
+            if (percent == 100)
+                color = GREEN;
+            else if (percent >= 17)
+                color = LITEGRAY;
+            else
+                color = RED;
+        }
+
+        if (common::getConf()->battery_percent) {
+            char batteryPercent[4];
+            sprintf(batteryPercent, "%d%%", percent);
+            common::printText(415, 13, batteryPercent, color, SIZE_MEDIUM);
+        }
 
         ya2d_draw_rect(455, 6, 20, 8, color, 0);
         ya2d_draw_rect(454, 8, 1, 5, color, 1);
@@ -186,10 +242,17 @@ static void drawBattery(){
 static void systemDrawer(){
 
     switch (optionsDrawState){
-        case 0: // draw border and battery
+        case 0:
+            // draw border, battery and datetime
             common::getImage(IMAGE_DIALOG)->draw_scale(0, 0, 480, 20);
             drawBattery();
-            common::printText(5, 13, entries[cur_entry]->getInfo().c_str(), LITEGRAY, SIZE_MEDIUM, 0, 0);
+			dateTime();
+            // draw entry text
+            entries[cur_entry]->drawInfo();
+            // draw music icon is music player is open
+            if (MusicPlayer::isPlaying()){
+                common::getIcon(FILE_MUSIC)->draw( common::getConf()->battery_percent ? 250:280, 3);
+            }
             break;
         case 1: // draw opening animation
             drawOptionsMenuCommon();
@@ -222,12 +285,14 @@ static int drawThread(SceSize _args, void *_argp){
         }
         if (!screensaver){
             entries[cur_entry]->draw();
-            systemDrawer();
-            if (common::getConf()->show_fps){
-                ostringstream fps;
-                ya2d_calc_fps();
-                fps<<ya2d_get_fps();
-                common::printText(460, 260, fps.str().c_str());
+            if (!fullscreen){
+                systemDrawer();
+                if (common::getConf()->show_fps){
+                    ostringstream fps;
+                    ya2d_calc_fps();
+                    fps<<ya2d_get_fps();
+                    common::printText(460, 260, fps.str().c_str());
+                }
             }
         }
         common::flipScreen();
@@ -243,15 +308,20 @@ static int controlThread(SceSize _args, void *_argp){
     Controller pad;
     clock_t last_pressed = clock();
     while (running){
+    	int screensaver_time = screensaver_times[common::getConf()->screensaver];
         pad.update();
         if (pad.triangle() && !screensaver){
             changeMenuState();
+        }
+        else if (pad.home() && screensaver_time != 0){
+            screensaver = !screensaver;
+            pad.flush();
+            continue;
         }
         else if (!screensaver){
             if (system_menu) systemController(&pad);
             else entries[cur_entry]->control(&pad);
         }
-        int screensaver_time = screensaver_times[common::getConf()->screensaver];
         if (screensaver_time > 0 && !stillLoading()){
             if (pad.any()){
                 last_pressed = clock();
@@ -277,25 +347,36 @@ void SystemMgr::initMenu(SystemEntry** e, int ne){
     entries = e;
     MAX_ENTRIES = ne;
     today = common::getDateTime();
+
+    // get ARK version    
     u32 ver = sctrlHENGetMinorVersion();
     u32 major = (ver&0xFF0000)>>16;
     u32 minor = (ver&0xFF00)>>8;
     u32 micro = (ver&0xFF);
+
+    // get OFW version (bypass patches)
+    struct KernelCallArg args;
+    u32 getDevkitVersion = sctrlHENFindFunction("sceSystemMemoryManager", "SysMemUserForUser", 0x3FC9AE6A);    
+    kuKernelCall((void*)getDevkitVersion, &args);
+    u32 fw = args.ret1;
+    u32 fwmajor = fw>>24;
+    u32 fwminor = (fw>>16)&0xF;
+    u32 fwmicro = (fw>>8)&0xF;
+
     stringstream version;
-    #ifdef DEBUG 
-    version << "ARK Version " << major << "." << minor;
-    if (micro>0) version << "." << micro << " DEBUG";
-	else version << " DEBUG";
-    ark_version = version.str();
-	#else
-	version << "ARK Version " << major << "." << minor;
-    if (micro>0) version << "." << micro;
-    ark_version = version.str();
+    version << "FW " << fwmajor << "." << fwminor << fwmicro;
+	version << " ARK " << major << "." << minor;
+    if (micro>9) version << "." << micro;
+    else if (micro>0) version << ".0" << micro;
+    version << " " << common::getArkConfig()->exploit_id;
+    #ifdef DEBUG
+	version << " DEBUG";
 	#endif
+    ark_version = version.str();
 }
 
 void SystemMgr::startMenu(){
-    draw_thread = sceKernelCreateThread("draw_thread", &drawThread, 0x10, 0x10000, PSP_THREAD_ATTR_USER, NULL);
+    draw_thread = sceKernelCreateThread("draw_thread", &drawThread, 0x10, 0x10000, PSP_THREAD_ATTR_USER|PSP_THREAD_ATTR_VFPU, NULL);
     sceKernelStartThread(draw_thread, 0, NULL);
     entries[cur_entry]->resume();
     controlThread(0, NULL);
@@ -318,6 +399,14 @@ void SystemMgr::pauseDraw(){
 void SystemMgr::resumeDraw(){
     sceKernelSignalSema(draw_sema, 1);
     sceKernelDelayThread(0);
+}
+
+void SystemMgr::enterFullScreen(){
+    fullscreen = 1;
+}
+
+void SystemMgr::exitFullScreen(){
+    fullscreen = 0;
 }
 
 SystemEntry* SystemMgr::getSystemEntry(unsigned index){

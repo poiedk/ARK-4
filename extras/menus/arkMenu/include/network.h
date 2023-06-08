@@ -35,5 +35,7 @@ typedef struct
 extern int initializeNetwork(void);
 extern int connect_to_apctl(void);
 extern int shutdownNetwork();
+extern char* resolveHostAddress(char*);
+extern int wget(char* url, char* saveAs);
 
 #endif

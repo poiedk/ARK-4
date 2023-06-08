@@ -40,6 +40,21 @@ STMOD_HANDLER previous;
 // Module Start Handler
 void stargateSyspatchModuleOnStart(SceModule2 * mod)
 {
+
+    if (strcmp(mod->modname, "tekken") == 0) {
+        hookImportByNID(mod, "scePower", 0x34F9C463, 222); // scePowerGetPllClockFrequencyInt
+	}
+
+    else if (strcmp(mod->modname, "ATVPRO") == 0){
+        hookImportByNID(mod, "scePower", 0x843FBF43, 0);   // scePowerSetCpuClockFrequency
+        hookImportByNID(mod, "scePower", 0xFDB5BFE9, 222); // scePowerGetCpuClockFrequencyInt
+        hookImportByNID(mod, "scePower", 0xBD681969, 111); // scePowerGetBusClockFrequencyInt
+    }
+    
+    else if (strcasecmp(mod->modname, "DJMAX") == 0) {
+        hookImportByNID(mod, "IoFileMgrForUser", 0xE3EB004C, 0);
+    }
+
     // Call Previous Module Start Handler
     if(previous) previous(mod);
     
@@ -103,30 +118,33 @@ static void patchLoadExec(void)
 // Entry Point
 int module_start(SceSize args, void * argp)
 {
+
     #ifdef DEBUG
     // Hello Message
     printk("stargate started: compiled at %s %s\r\n", __DATE__, __TIME__);
     #endif
 
-    // work only on retail games
     int apitype = sceKernelInitApitype();
-    if (
-        apitype != 0x120 &&
-        apitype != 0x123 &&
-        apitype != 0x125 &&
-        apitype > 0x115
-    ) return;
+
+    if (apitype == 0x141 || apitype == 0x152)
+        return 0; // don't do anything in homebrew
 
     patch_sceMesgLed();
 
     // Fix Idol Master
     patchLoadExec();
+
+    // Fix non-Latin1 characters in ISO name
+    patch_IsoDrivers();
     
     // Fetch sceUtility Load Module Functions
     getLoadModuleFuncs();
     
     // Initialize NPDRM
     nodrmInit();
+
+    // Patch free mem size
+    patch_ioDevCtl();
     
     // Register Start Module Handler
     previous = sctrlHENSetStartModuleHandler(stargateSyspatchModuleOnStart);

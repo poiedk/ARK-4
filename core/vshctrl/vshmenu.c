@@ -38,6 +38,8 @@
 #define ALL_CTRL     (ALL_ALLOW|ALL_BUTTON|ALL_TRIGGER|ALL_FUNCTION)
 
 extern ARKConfig* ark_config;
+extern int cur_usbdevice;
+extern int usb_readonly;
 
 SEConfig conf;
 
@@ -64,6 +66,8 @@ int vctrlVSHUpdateConfig(SEConfig *config)
     k1 = pspSdkSetK1(0);
     memcpy(&conf, config, sizeof(conf));
     ret = sctrlSESetConfig(&conf);
+    cur_usbdevice = config->usbdevice;
+    usb_readonly = config->usbdevice_rdonly;
     pspSdkSetK1(k1);
     return ret;
 }
@@ -74,7 +78,11 @@ int vctrlVSHExitVSHMenu(SEConfig *config, char *videoiso, int disctype)
     int ret = 0;
 
     k1 = pspSdkSetK1(0);
-    if (config) ret = vctrlVSHUpdateConfig(config);
+    if (config){
+        ret = vctrlVSHUpdateConfig(config);
+        cur_usbdevice = config->usbdevice;
+        usb_readonly = config->usbdevice_rdonly;
+    }
 
     g_VshMenuCtrl = NULL;
     pspSdkSetK1(k1);
@@ -97,6 +105,11 @@ static SceUID load_satelite(void)
     };
 
     modid = sceKernelLoadModule(path, 0, &opt);
+
+    if (modid < 0){
+        // try flash0
+        modid = sceKernelLoadModule("flash0:/vsh/module/ark_satelite.prx", 0, &opt);
+    }
 
     return modid;
 }

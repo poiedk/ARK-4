@@ -237,6 +237,63 @@ static struct {
     {"Disabled", "Enabled"}
 };
 
+static struct {
+    char* description;
+    unsigned char max_options;
+    unsigned char selection;
+    unsigned char* config_ptr;
+    char* options[2];
+} force_update = {
+    "Force Update",
+    2,
+    0,
+    &(common::getConf()->force_update),
+    {"Disabled", "Enabled"}
+};
+
+static struct {
+    char* description;
+    unsigned char max_options;
+    unsigned char selection;
+    unsigned char* config_ptr;
+    char* options[2];
+} battery_percent = {
+    "Display Battery Percent",
+    2,
+    0,
+    &(common::getConf()->battery_percent),
+    {"Disabled", "Enabled"}
+};
+
+static struct {
+    char* description;
+    unsigned char max_options;
+    unsigned char selection;
+    unsigned char* config_ptr;
+    char* options[3];
+} startbtn = {
+    "Start Button Behavior",
+    3,
+    0,
+    &(common::getConf()->startbtn),
+    {"Current", "Last Game", "Random Game"}
+};
+
+static struct {
+    char* description;
+    unsigned char max_options;
+    unsigned char selection;
+    unsigned char* config_ptr;
+    char* options[4];
+} menusize = {
+    "System Menu Size",
+    4,
+    0,
+    &(common::getConf()->menusize),
+    {"Default", "Small", "Medium", "Large"}
+};
+
+
 settings_entry* settings_entries[] = {
     (settings_entry*)&fast_gameboot,
     (settings_entry*)&language,
@@ -253,6 +310,10 @@ settings_entry* settings_entries[] = {
     (settings_entry*)&text_glow,
     (settings_entry*)&screensaver,
     (settings_entry*)&redirect_ms0,
+    (settings_entry*)&force_update,
+    (settings_entry*)&battery_percent,
+    (settings_entry*)&startbtn,
+    (settings_entry*)&menusize,
 };
 
 #define MAX_SETTINGS_OPTIONS (sizeof(settings_entries)/sizeof(settings_entries[0]))

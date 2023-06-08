@@ -6,6 +6,8 @@
 #include "browser_entries.h"
 #include "ftpclient.h"
 
+static char* ANONYMOUS = "anonymous";
+
 class FTPFile : public BrowserFile{
     protected:
         string st_size;
@@ -25,6 +27,7 @@ class FTPFile : public BrowserFile{
 
 FTPDriver::FTPDriver(){
     connected = false;
+    root = "";
 }
 
 FTPDriver::~FTPDriver(){
@@ -51,7 +54,7 @@ bool FTPDriver::connect(){
     bool ret = false;
     char tmpText[51];
     OSK osk;
-    osk.init("Enter IP address of FTP Server", "", 50);
+    osk.init("Enter address of FTP Server", "", 50);
     osk.loop();
     if(osk.getResult() != OSK_CANCEL)
     {
@@ -63,17 +66,58 @@ bool FTPDriver::connect(){
     if (ret){
         ftpInit();
         printf("FTP Connecting to server\n");
-        if (!ftpConnect(tmpText, 21)){
+
+        int port = 21;
+        char* p;
+        if ((p=strstr(tmpText, "/")) != NULL){
+            this->root = string(p);
+            p[0] = 0;
+        }
+        if ((p=strstr(tmpText, ":")) != NULL){
+            port = atoi(p+1);
+            p[0] = 0;
+        }
+        char* host = resolveHostAddress(tmpText);
+
+        if (!ftpConnect(host, port)){
+            ftpClean();
             shutdownNetwork();
             return false;
         }
-        /*
+
+        char* user = ANONYMOUS;
+        char password[51];
+        password[0] = 0;
+
+        osk.init("Enter username (cancel for anonymous)", "", 50);
+        osk.loop();
+        if(osk.getResult() != OSK_CANCEL)
+        {
+            osk.getText((char*)tmpText);
+            user = tmpText;
+        }
+        osk.end();
+
+        if (user != ANONYMOUS){
+            osk.init("Enter password", "", 50);
+            osk.loop();
+            if(osk.getResult() != OSK_CANCEL)
+            {
+                osk.getText((char*)password);
+                user = tmpText;
+            }
+            osk.end();
+        }
+
         printf("FTP log in\n");
-        if (ftpLogin("anonymous", "") < 0){
-            shutdownNetwork();
-            return false;
+        if (ftpLogin(user, password) < 0){
+            if (user != ANONYMOUS){
+                ftpClean();
+                shutdownNetwork();
+                return false;
+            }
         }
-        */
+        
         connected = true;
         printf("FTP connected\n");
     }
@@ -96,6 +140,7 @@ vector<Entry*> FTPDriver::listDirectory(string path){
     string ftp_path = path.substr(getDevicePath().size(), path.size());
     if (ftp_path.size() == 0) ftp_path = "/";
     if (ftp_path[0] != '/') ftp_path = string("/") + ftp_path;
+    ftp_path = this->root + ftp_path;
     printf("FTP::CWD -> %s\n", ftp_path.c_str());
     ftpCWD((char*)ftp_path.c_str());
     printf("FTP::List\n");
@@ -184,6 +229,13 @@ void FTPDriver::createFolder(string path){
         path = path.substr(this->getDevicePath().size()-1, path.size());
     }
     ftpMKD((char*)path.c_str());
+}
+
+void FTPDriver::createFile(string path){
+    if (this->isDevicePath(path)){
+        path = path.substr(this->getDevicePath().size()-1, path.size());
+    }
+    ftpAPPE((char*)path.c_str());
 }
 
 void FTPDriver::copyFileTo(string orig, string dest, int* progress){

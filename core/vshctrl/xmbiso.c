@@ -27,15 +27,66 @@
 #include "virtual_pbp.h"
 #include "strsafe.h"
 #include "dirent_track.h"
+#include "macros.h"
 //#include "ansi_c_functions.h"
 
 #define MAGIC_DFD_FOR_DELETE 0x9000
 #define MAGIC_DFD_FOR_DELETE_2 0x9001
 
 extern u32 psp_model;
+extern SEConfig* se_config;
 static char g_iso_dir[128];
 static char g_temp_delete_dir[128];
 static int g_delete_eboot_injected = 0;
+
+static const char *game_list[] = {
+	"ms0:/PSP/GAME/"		,"ef0:/PSP/GAME/"		,
+};
+
+static int CorruptIconPatch(char *name)
+{
+	char path[256];
+	SceIoStat stat;
+
+
+    for (int i=0; i<NELEMS(game_list); i++){
+
+        const char *hidden_path = game_list[i];
+        strcpy(path, hidden_path);
+        strcat(path, name);
+        strcat(path, "%/EBOOT.PBP");
+
+        memset(&stat, 0, sizeof(stat));
+        if (sceIoGetstat(path, &stat) >= 0)
+        {
+            strcpy(name, "__SCE"); // hide icon
+            return 1;
+        }
+    }
+
+	return 0;
+}
+
+static int HideDlc(char *name) {
+	char path[256];
+    SceIoStat stat;
+
+    for (int i=0; i<NELEMS(game_list); i++){
+        const char *hidden_path = game_list[i];
+        sprintf(path, "%s%s/PARAM.PBP", hidden_path, name);
+        memset(&stat, 0, sizeof(stat));
+        if (sceIoGetstat(path, &stat) >= 0) {
+            sprintf(path, "%s%s/EBOOT.PBP", hidden_path, name);
+
+            memset(&stat, 0, sizeof(stat));
+            if (sceIoGetstat(path, &stat) < 0) {
+                strcpy(name, "__SCE"); // hide icon
+                return 1;
+            }
+        }
+    }
+	return 0;
+}
 
 static int is_iso_dir(const char *path)
 {
@@ -247,6 +298,13 @@ int gamedread(SceUID fd, SceIoDirent * dir)
             pspSdkSetK1(k1);
         }
     }
+    else {
+        int k1 = pspSdkSetK1(0);
+        CorruptIconPatch(dir->d_name);
+        if (se_config->hidedlc)
+    		HideDlc(dir->d_name);
+        pspSdkSetK1(k1);
+    }
     #ifdef DEBUG
     printk("%s: 0x%08X %s -> 0x%08X\n", __func__, fd, dir->d_name, result);
     #endif
@@ -397,6 +455,50 @@ int gameremove(const char * file)
     return result;
 }
 
+char game150_delete[256];
+
+void recursiveFolderDelete(char* path){
+    //try to open directory
+    SceUID d = sceIoDopen(path);
+    
+    if(d >= 0)
+    {
+        SceIoDirent entry;
+        memset(&entry, 0, sizeof(SceIoDirent));
+        
+        //allocate memory to store the full file paths
+        char new_path[256];
+
+        //start reading directory entries
+        while(sceIoDread(d, &entry) > 0)
+        {
+            //skip . and .. entries
+            if (!strcmp(".", entry.d_name) || !strcmp("..", entry.d_name)) 
+            {
+                memset(&entry, 0, sizeof(SceIoDirent));
+                continue;
+            };
+            
+            //build new file path
+            strcpy(new_path, path);
+            strcat(new_path, entry.d_name);
+
+            if (FIO_SO_ISDIR(entry.d_stat.st_attr)){
+                strcat(new_path, "/");
+                recursiveFolderDelete(new_path);
+            }
+            else{
+                sceIoRemove(new_path);
+            }
+            
+        };
+        sceIoDclose(d); //close directory
+        int len = strlen(path);
+        if (path[len-1] == '/') path[len-1] = 0;
+        sceIoRmdir(path); //delete empty folder
+    };
+}
+
 //remove folder
 int gamermdir(const char * path)
 {
@@ -415,7 +517,12 @@ int gamermdir(const char * path)
 
         return result;
     }
-
+    if (game150_delete[0]) {
+        int k1 = pspSdkSetK1(0);
+        recursiveFolderDelete(game150_delete);
+        pspSdkSetK1(k1);
+        game150_delete[0] = 0;
+    }
     result = sceIoRmdir(path);
     #ifdef DEBUG
     printk("%s: %s 0x%08X\n", __func__, path, result);
@@ -428,6 +535,7 @@ int gameloadexec(char * file, struct SceKernelLoadExecVSHParam * param)
 {
     //result
     int result = -1;
+
     //virtual iso eboot detected
     if (is_iso_eboot(file)) {
         u32 k1 = pspSdkSetK1(0);
@@ -435,6 +543,15 @@ int gameloadexec(char * file, struct SceKernelLoadExecVSHParam * param)
         pspSdkSetK1(k1);
         return result;
     }
+
+    // fix 1.50 homebrew
+    char *perc = strchr(param->argp, '%');
+    if (perc) {
+        strcpy(perc, perc + 1);
+        file = param->argp;
+    }
+
+    // homebrew boot
     u32 k1 = pspSdkSetK1(0);
     result = sceKernelLoadExecVSHMs2(file, param);
     pspSdkSetK1(k1);
@@ -464,6 +581,13 @@ int gamerename(const char *oldname, const char *newfile)
         printk("%s:<virtual2> %s %s -> 0x%08X\n", __func__, oldname, newfile, result);
         #endif
         return 0;
+    }
+
+    char* perc = strchr(oldname, '%');
+    if (perc && strstr(newfile, "_DEL_")){
+        memset(game150_delete, 0, sizeof(game150_delete));
+        strncpy(game150_delete, oldname, perc-oldname);
+        strcat(game150_delete, "/");
     }
 
     result = sceIoRename(oldname, newfile);

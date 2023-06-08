@@ -4,6 +4,8 @@
 #include <sstream>
 #include <fstream>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 #include "gfx.h"
 #include "debug.h"
 #include "common.h"
@@ -13,6 +15,8 @@
 #include "settingsmenu.h"
 #include "ark_settings.h"
 #include "ark_plugins.h"
+#include "settingsmenu.h"
+#include "../../arkMenu/include/settings_entries.h"
 #include "exit_mgr.h"
 #include "game_mgr.h"
 
@@ -22,7 +26,7 @@ PSP_HEAP_SIZE_KB(17*1024);
 
 using namespace std;
 
-#define MAX_ENTRIES 4
+#define MAX_ENTRIES 5
 static SystemEntry* entries[MAX_ENTRIES];
 
 int main(int argc, char** argv){
@@ -30,29 +34,41 @@ int main(int argc, char** argv){
     intraFontInit();
     ya2d_init();
 
+    // setup UMD disc
+    sceUmdReplacePermit();
+
     common::loadData(argc, argv);
 
     // Add ARK settings manager
     loadSettings();
-    SettingsMenu* settings_menu = new SettingsMenu(ark_conf_entries, MAX_ARK_CONF, saveSettings);
-    settings_menu->setName("Settings");
-    settings_menu->setInfo("ARK Settings");
+    SettingsTable stab = { ark_conf_entries, ark_conf_max_entries };
+    SettingsMenu* settings_menu = new SettingsMenu(&stab, saveSettings, false, true, true);
+    settings_menu->setName("CFW Settings");
+    settings_menu->setInfo("ARK Custom Firmware Settings");
     settings_menu->readConf();
     entries[0] = settings_menu;
 
     // Add ARK plugins manager
     loadPlugins();
-    SettingsMenu* plugins_menu = new SettingsMenu(ark_plugin_entries, ark_plugins_count, savePlugins);
+    SettingsMenu* plugins_menu = new SettingsMenu(&plugins_table, savePlugins, true, true, true);
     plugins_menu->setName("Plugins");
-    plugins_menu->setInfo("ARK Plugins");
-    plugins_menu->setIcon(common::getImage(IMAGE_PLUGINS));
+    plugins_menu->setInfo("Installed Plugins");
+    plugins_menu->setIcon(IMAGE_PLUGINS);
     entries[1] = plugins_menu;
 
     // Add browser
     entries[2] = new Browser();
 
+	// Settings
+    SettingsTable stab_recovery = { settings_entries, MAX_SETTINGS_OPTIONS };
+    SettingsMenu* recovery_settings_menu = new SettingsMenu(&stab_recovery, common::saveConf, false, true, true);
+	recovery_settings_menu->setName("Menu Settings");
+	recovery_settings_menu->setInfo("Launcher/Recovery Settings");
+	entries[3] = recovery_settings_menu;
+
+
     // Add exit game
-    entries[3] = new ExitManager();
+    entries[4] = new ExitManager();
 
     SystemMgr::initMenu(entries, MAX_ENTRIES);
     

@@ -31,14 +31,12 @@
 #include "globals.h"
 #include "functions.h"
 
-#define DAX_BLOCK_SIZE 0x2000
-#define DAX_COMP_BUF 0x2400
-
 PSP_MODULE_INFO("VshCtrl", 0x1007, 1, 0);
 
 u32 psp_model = 0;
-ARKConfig _ark_conf;
-ARKConfig* ark_config = &_ark_conf;
+ARKConfig* ark_config = NULL;
+SEConfig* se_config = NULL;
+int has_umd_iso = 0;
 
 // Flush Instruction and Data Cache
 void sync_cache()
@@ -70,13 +68,6 @@ int get_device_name(char *device, int size, const char* path)
     return 0;
 }
 
-int hidepics = 0;
-void settingsHandler(char* path){
-    if (strcasecmp(path, "hidepics") == 0){ // hide PIC0 and PIC1
-        hidepics = 1;
-    }
-}
-
 int module_start(SceSize args, void* argp)
 {
     #ifdef DEBUG
@@ -85,16 +76,21 @@ int module_start(SceSize args, void* argp)
     #endif
     
     psp_model = sceKernelGetModel();
-    sctrlHENGetArkConfig(ark_config);
-    isoInit();
+    ark_config = sctrlHENGetArkConfig(NULL);
+    se_config = sctrlSEGetConfig(NULL);
+
     vshpatch_init();
-    loadSettings(&settingsHandler);
+    load_server_file();
     
     // always reset to NORMAL mode in VSH
     // to avoid ISO mode is used in homebrews in next reboot
-    if(sctrlSEGetBootConfFileIndex() != MODE_VSHUMD) {
-        sctrlSESetUmdFile("");
-        sctrlSESetBootConfFileIndex(MODE_UMD);
+    has_umd_iso = (sctrlSEGetUmdFile()[0] != 0 && sctrlSEGetBootConfFileIndex() == MODE_VSHUMD);
+    sctrlSESetUmdFile("");
+    sctrlSESetBootConfFileIndex(MODE_UMD);
+
+    if (has_umd_iso){
+        // disable launcher mode if using VSH ISO
+        ark_config->launcher[0] = 0;
     }
 
     return 0;
