@@ -557,16 +557,20 @@ void HijackContext(SceRcoEntry *src, char **options, int n)
         int i;
         for(i = 0; i < n; i++)
         {
-            sce_paf_private_memcpy(item, base, base->next_entry);
 
-            item_param[0] = 0xDEAD;
-            item_param[1] = (u32)options[i];
+			if(sce_paf_private_strcmp("XMB", options[i]) == 0)
+				continue;
+			else {
+            	sce_paf_private_memcpy(item, base, base->next_entry);
+            	item_param[0] = 0xDEAD;
+           		item_param[1] = (u32)options[i];
 
-            if(i != 0) item->prev_entry = item->next_entry;
-            if(i == n - 1) item->next_entry = 0;
+            	if(i != 0) item->prev_entry = item->next_entry;
+            	if(i == n - 1) item->next_entry = 0;
 
-            item = (SceRcoEntry *)((u32)item + base->next_entry);
-            item_param = (u32 *)((u32)item + base->param);
+            	item = (SceRcoEntry *)((u32)item + base->next_entry);
+            	item_param = (u32 *)((u32)item + base->param);
+			}
         }
     }
     else
