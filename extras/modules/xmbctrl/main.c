@@ -585,7 +585,7 @@ void HijackContext(SceRcoEntry *src, char **options, int n)
         for(i = 0; i < n; i++)
         {
 
-			if((!sce_paf_private_strcmp("XMB", options[i]) == 0 || !sce_paf_private_strcmp("Disable", options[i]) == 0) && sce_paf_private_strcmp("Hide MAC Address", item->next_entry))
+			if((!sce_paf_private_strcmp("XMB", options[i]) == 0 || !sce_paf_private_strcmp("Disabled", options[i]) == 0) && sce_paf_private_strcmp("Hide MAC Address", item->next_entry))
 				continue;
 			else {
             	sce_paf_private_memcpy(item, base, base->next_entry);
